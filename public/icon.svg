@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="礼记">
+  <rect width="512" height="512" rx="112" fill="#ffffff"/>
+  <rect x="36" y="36" width="440" height="440" rx="92" fill="#28756f"/>
+  <path d="M144 154h224v44H144zM167 238h178v38H167zM167 316h122v38H167z" fill="#ffffff"/>
+  <path d="M113 111h286v290H113z" fill="none" stroke="#ffffff" stroke-width="24"/>
+</svg>
