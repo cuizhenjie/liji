@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   BellRingIcon,
   BotIcon,
@@ -71,6 +71,18 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { deriveComplianceProfile } from "@/lib/liji/compliance";
 import { generateFestivalPlan, generateTravelPlan } from "@/lib/liji/budget";
+import {
+  clearWorkspaceData,
+  loadWorkspaceData,
+  saveWorkspaceData,
+} from "@/lib/liji/persistence";
+import {
+  acknowledgeEvent,
+  acknowledgeNotificationLog,
+  applyConfirmedCapture,
+  rejectCapture as rejectCaptureWorkflow,
+  setPlanStatus,
+} from "@/lib/liji/workflow";
 import type {
   CalendarEvent,
   CaptureItem,
@@ -143,38 +155,88 @@ function statusText(status: CaptureItem["status"] | FulfillmentPlan["status"]) {
 }
 
 function useWorkspace(initialData: WorkspaceData) {
-  const [data, setData] = useState(initialData);
+  const [workspaceState, setWorkspaceState] = useState<{
+    data: WorkspaceData;
+    storageState: "seed" | "restored" | "saved";
+  }>(() => {
+    if (typeof window === "undefined") {
+      return { data: initialData, storageState: "seed" };
+    }
+
+    const restored = loadWorkspaceData(window.localStorage);
+    return restored
+      ? { data: restored, storageState: "restored" }
+      : { data: initialData, storageState: "seed" };
+  });
+
+  const data = workspaceState.data;
+
+  useEffect(() => {
+    saveWorkspaceData(window.localStorage, data);
+  }, [data]);
 
   return {
     data,
+    storageState: workspaceState.storageState,
+    resetWorkspace() {
+      clearWorkspaceData(window.localStorage);
+      setWorkspaceState({ data: initialData, storageState: "seed" });
+      toast.success("已重置为演示数据");
+    },
     setContacts(updater: (contacts: Contact[]) => Contact[]) {
-      setData((current) => ({ ...current, contacts: updater(current.contacts) }));
+      setWorkspaceState((current) => ({
+        data: { ...current.data, contacts: updater(current.data.contacts) },
+        storageState: "saved",
+      }));
     },
     setEvents(updater: (events: CalendarEvent[]) => CalendarEvent[]) {
-      setData((current) => ({ ...current, events: updater(current.events) }));
+      setWorkspaceState((current) => ({
+        data: { ...current.data, events: updater(current.data.events) },
+        storageState: "saved",
+      }));
     },
     setPlans(updater: (plans: FulfillmentPlan[]) => FulfillmentPlan[]) {
-      setData((current) => ({ ...current, plans: updater(current.plans) }));
+      setWorkspaceState((current) => ({
+        data: { ...current.data, plans: updater(current.data.plans) },
+        storageState: "saved",
+      }));
     },
     setCaptures(updater: (captures: CaptureItem[]) => CaptureItem[]) {
-      setData((current) => ({ ...current, captures: updater(current.captures) }));
+      setWorkspaceState((current) => ({
+        data: { ...current.data, captures: updater(current.data.captures) },
+        storageState: "saved",
+      }));
     },
     setTransactions(updater: (transactions: Transaction[]) => Transaction[]) {
-      setData((current) => ({
-        ...current,
-        transactions: updater(current.transactions),
+      setWorkspaceState((current) => ({
+        data: {
+          ...current.data,
+          transactions: updater(current.data.transactions),
+        },
+        storageState: "saved",
       }));
     },
     setNotificationLogs(updater: (logs: NotificationLog[]) => NotificationLog[]) {
-      setData((current) => ({
-        ...current,
-        notificationLogs: updater(current.notificationLogs),
+      setWorkspaceState((current) => ({
+        data: {
+          ...current.data,
+          notificationLogs: updater(current.data.notificationLogs),
+        },
+        storageState: "saved",
       }));
     },
     setPrivacy(updater: (settings: PrivacySettings) => PrivacySettings) {
-      setData((current) => ({ ...current, privacy: updater(current.privacy) }));
+      setWorkspaceState((current) => ({
+        data: { ...current.data, privacy: updater(current.data.privacy) },
+        storageState: "saved",
+      }));
     },
-    setData,
+    setData(updater: (current: WorkspaceData) => WorkspaceData) {
+      setWorkspaceState((current) => ({
+        data: updater(current.data),
+        storageState: "saved",
+      }));
+    },
   };
 }
 
@@ -227,57 +289,12 @@ export function LijiApp({ initialData }: LijiAppProps) {
   }
 
   function confirmCapture(capture: CaptureItem) {
-    workspace.setCaptures((captures) =>
-      captures.map((item) =>
-        item.id === capture.id ? { ...item, status: "confirmed" } : item
-      )
-    );
-
-    if (capture.parsed.intent === "event" || capture.parsed.intent === "travel") {
-      const event: CalendarEvent = {
-        id: `e-${nanoid(8)}`,
-        title: capture.parsed.title,
-        date: capture.parsed.date ?? "2026-07-10",
-        endDate: capture.parsed.endDate,
-        contactId: data.contacts.find(
-          (contact) =>
-            contact.name === capture.parsed.targetName ||
-            contact.relation === capture.parsed.relation
-        )?.id,
-        location: capture.parsed.location,
-        calendarType: "solar",
-        rrule: capture.parsed.frequency,
-        reminderLevel: capture.parsed.reminderLevel,
-        status: "scheduled",
-        budgetCny: capture.parsed.budgetCny,
-        source: capture.parsed.intent === "travel" ? "travel" : "ai",
-      };
-      workspace.setEvents((events) => [event, ...events]);
-    }
-
-    if (capture.parsed.intent === "transaction") {
-      workspace.setTransactions((transactions) => [
-        {
-          id: `t-${nanoid(8)}`,
-          title: capture.parsed.title,
-          amountCny: capture.parsed.amountCny ?? 0,
-          category: "daily",
-          occurredAt: capture.parsed.date ?? "2026-07-01",
-          source: "ai",
-        },
-        ...transactions,
-      ]);
-    }
-
+    workspace.setData((current) => applyConfirmedCapture(current, capture));
     toast.success("已确认并写入工作区");
   }
 
   function rejectCapture(captureId: string) {
-    workspace.setCaptures((captures) =>
-      captures.map((item) =>
-        item.id === captureId ? { ...item, status: "rejected" } : item
-      )
-    );
+    workspace.setData((current) => rejectCaptureWorkflow(current, captureId));
     toast("已驳回该采集项");
   }
 
@@ -361,6 +378,26 @@ export function LijiApp({ initialData }: LijiAppProps) {
     }));
   }
 
+  function confirmPlan(planId: string) {
+    workspace.setData((current) => setPlanStatus(current, planId, "confirmed"));
+    toast.success("方案已确认");
+  }
+
+  function bookmarkPlan(planId: string) {
+    workspace.setData((current) => setPlanStatus(current, planId, "bookmarked"));
+    toast.success("方案已归档收藏");
+  }
+
+  function confirmEventRead(eventId: string) {
+    workspace.setData((current) => acknowledgeEvent(current, eventId));
+    toast.success("已确认提醒，停止升级");
+  }
+
+  function confirmLogRead(logId: string) {
+    workspace.setData((current) => acknowledgeNotificationLog(current, logId));
+    toast.success("投递日志已确认");
+  }
+
   function correctMemory(memoryId: string) {
     workspace.setData((current) => ({
       ...current,
@@ -417,10 +454,15 @@ export function LijiApp({ initialData }: LijiAppProps) {
                   <p className="text-sm text-muted-foreground">2026年7月1日 · Asia/Shanghai</p>
                   <h1 className="text-xl font-semibold tracking-normal">我的看板</h1>
                 </div>
-                <Button variant="outline" size="sm" onClick={runReminderScanNow} disabled={isPending}>
-                  {isPending ? <Loader2Icon data-icon="inline-start" /> : <RotateCwIcon data-icon="inline-start" />}
-                  扫描提醒
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="hidden md:inline-flex">
+                    {workspace.storageState === "restored" ? "已恢复本地数据" : workspace.storageState === "saved" ? "已本地保存" : "演示数据"}
+                  </Badge>
+                  <Button variant="outline" size="sm" onClick={runReminderScanNow} disabled={isPending}>
+                    {isPending ? <Loader2Icon data-icon="inline-start" /> : <RotateCwIcon data-icon="inline-start" />}
+                    扫描提醒
+                  </Button>
+                </div>
               </div>
 
               <div className="w-full max-w-3xl">
@@ -491,11 +533,13 @@ export function LijiApp({ initialData }: LijiAppProps) {
                   onDailyLimit={setDailyLimit}
                   onBirthdayPlan={generateBirthdayPlan}
                   onTravelPlan={generateBusinessTravelPlan}
+                  onConfirmPlan={confirmPlan}
+                  onBookmarkPlan={bookmarkPlan}
                 />
               )}
               {activeSection === "finance" && <FinanceSection data={data} />}
               {activeSection === "privacy" && (
-                <PrivacySection data={data} onToggle={togglePrivacy} />
+                <PrivacySection data={data} onToggle={togglePrivacy} onReset={workspace.resetWorkspace} />
               )}
             </section>
 
@@ -505,6 +549,8 @@ export function LijiApp({ initialData }: LijiAppProps) {
                 logs={data.notificationLogs}
                 pendingCount={pendingCaptures.length}
                 onNavigate={setActiveSection}
+                onConfirmEvent={confirmEventRead}
+                onConfirmLog={confirmLogRead}
               />
             </aside>
           </div>
@@ -610,11 +656,20 @@ function DashboardSection(props: {
                         <p className="mt-2 text-sm text-muted-foreground">{capture.maskedText}</p>
                       </div>
                       <div className="flex gap-2">
-                        <Button size="sm" onClick={() => props.onConfirm(capture)}>
+                        <Button
+                          size="sm"
+                          aria-label={`确认采集 ${capture.parsed.title}`}
+                          onClick={() => props.onConfirm(capture)}
+                        >
                           <CheckIcon data-icon="inline-start" />
                           确认
                         </Button>
-                        <Button size="sm" variant="outline" onClick={() => props.onReject(capture.id)}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          aria-label={`驳回采集 ${capture.parsed.title}`}
+                          onClick={() => props.onReject(capture.id)}
+                        >
                           <XIcon data-icon="inline-start" />
                           驳回
                         </Button>
@@ -839,6 +894,8 @@ function FulfillmentSection(props: {
   onDailyLimit: (value: string) => void;
   onBirthdayPlan: () => void;
   onTravelPlan: () => void;
+  onConfirmPlan: (planId: string) => void;
+  onBookmarkPlan: (planId: string) => void;
 }) {
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
@@ -888,7 +945,12 @@ function FulfillmentSection(props: {
 
       <div className="flex flex-col gap-4">
         {props.data.plans.map((plan) => (
-          <PlanCard key={plan.id} plan={plan} />
+          <PlanCard
+            key={plan.id}
+            plan={plan}
+            onConfirm={props.onConfirmPlan}
+            onBookmark={props.onBookmarkPlan}
+          />
         ))}
       </div>
     </div>
@@ -950,9 +1012,11 @@ function FinanceSection({ data }: { data: WorkspaceData }) {
 function PrivacySection({
   data,
   onToggle,
+  onReset,
 }: {
   data: WorkspaceData;
   onToggle: (key: keyof PrivacySettings) => void;
+  onReset: () => void;
 }) {
   const rows: Array<{ key: keyof PrivacySettings; title: string; detail: string }> = [
     { key: "piiMasking", title: "PII 脱敏", detail: "姓名、电话、地址、公司名替换为临时占位符。" },
@@ -968,6 +1032,12 @@ function PrivacySection({
       <CardHeader>
         <CardTitle>隐私与授权中心</CardTitle>
         <CardDescription>敏感数据、模型调用和通知通道集中管理。</CardDescription>
+        <CardAction>
+          <Button size="sm" variant="outline" onClick={onReset}>
+            <RotateCwIcon data-icon="inline-start" />
+            重置演示数据
+          </Button>
+        </CardAction>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
@@ -991,6 +1061,8 @@ function RightRail(props: {
   logs: NotificationLog[];
   pendingCount: number;
   onNavigate: (section: SectionId) => void;
+  onConfirmEvent: (eventId: string) => void;
+  onConfirmLog: (logId: string) => void;
 }) {
   return (
     <div className="flex flex-col gap-4">
@@ -1007,8 +1079,20 @@ function RightRail(props: {
           <div className="flex flex-col gap-3">
             {props.urgentEvents.map((event) => (
               <div key={event.id} className="rounded-lg border p-3">
-                <div className="font-medium">{event.title}</div>
-                <div className="mt-1 text-sm text-muted-foreground">{event.date}</div>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-medium">{event.title}</div>
+                    <div className="mt-1 text-sm text-muted-foreground">{event.date}</div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant={event.status === "confirmed" ? "secondary" : "outline"}
+                    aria-label={`确认提醒 ${event.title}`}
+                    onClick={() => props.onConfirmEvent(event.id)}
+                  >
+                    {event.status === "confirmed" ? "已确认" : "确认"}
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
@@ -1038,7 +1122,14 @@ function RightRail(props: {
             {props.logs.slice(0, 4).map((log) => (
               <div key={log.id} className="flex items-center justify-between gap-3 rounded-md border px-2 py-2 text-sm">
                 <span className="truncate">{log.title}</span>
-                <Badge variant={log.status === "confirmed" ? "secondary" : "outline"}>{log.channel}</Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant={log.status === "confirmed" ? "secondary" : "outline"}>{log.channel}</Badge>
+                  {log.status !== "confirmed" && (
+                    <Button size="xs" variant="ghost" onClick={() => props.onConfirmLog(log.id)}>
+                      确认
+                    </Button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -1115,7 +1206,15 @@ function ContactList({
   );
 }
 
-function PlanCard({ plan }: { plan: FulfillmentPlan }) {
+function PlanCard({
+  plan,
+  onConfirm,
+  onBookmark,
+}: {
+  plan: FulfillmentPlan;
+  onConfirm: (planId: string) => void;
+  onBookmark: (planId: string) => void;
+}) {
   return (
     <Card>
       <CardHeader>
@@ -1159,6 +1258,20 @@ function PlanCard({ plan }: { plan: FulfillmentPlan }) {
           ))}
         </div>
       </CardContent>
+      <CardFooter className="justify-between">
+        <span className="text-sm text-muted-foreground">
+          风险等级：{plan.riskLevel === "high" ? "高" : plan.riskLevel === "medium" ? "中" : "低"}
+        </span>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" aria-label={`归档方案 ${plan.title}`} onClick={() => onBookmark(plan.id)}>
+            归档
+          </Button>
+          <Button size="sm" aria-label={`确认方案 ${plan.title}`} onClick={() => onConfirm(plan.id)}>
+            <CheckIcon data-icon="inline-start" />
+            确认方案
+          </Button>
+        </div>
+      </CardFooter>
     </Card>
   );
 }
