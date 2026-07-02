@@ -47,8 +47,6 @@ npx playwright install chromium webkit
 - 隐私授权：开关和演示数据可本地保存，支持导出数据、一键重置和本地删除。
 - 产品化基础：新增 AI 结构化解析适配器、通知 provider、履约追踪链接、隐私导出/脱敏、Workspace Repository 和 `/api/workspace/sync` 云端同步入口。
 
-接口契约见 `docs/api-contract.md`，部署步骤见 `docs/deployment.md`。
-
 ## 环境变量
 
 MVP 可在没有外部密钥时用内置 demo 数据运行。接 Supabase 时配置：
@@ -91,9 +89,3 @@ Supabase migration 位于 `supabase/migrations/20260701193000_initial_liji_schem
 - `web_push_subscriptions`、`integration_accounts`
 - `fulfillment_clicks`、`monthly_reports`、`audit_logs`
 - 采集来源字段、常用查询索引和 RLS 策略
-
-## 设计资产
-
-- 概念稿：`docs/design/liji-dashboard-concept.png`
-- 桌面渲染截图：`docs/design/liji-dashboard-render-desktop.png`
-- 移动渲染截图：`docs/design/liji-dashboard-render-mobile.png`

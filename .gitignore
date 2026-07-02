@@ -24,6 +24,12 @@
 .DS_Store
 *.pem
 
+# local agent/project notes
+.omc/
+docs/
+CLAUDE.md
+AGENTS.md
+
 # debug
 npm-debug.log*
 yarn-debug.log*
