@@ -1,5 +1,4 @@
-import { nanoid } from "nanoid";
-
+import { createUuid } from "./ids";
 import type {
   AiMemory,
   CalendarEvent,
@@ -45,7 +44,7 @@ export function applyConfirmedCapture(
     pendingCapture.parsed.intent === "travel"
   ) {
     const event: CalendarEvent = {
-      id: `e-${nanoid(8)}`,
+      id: createUuid(),
       title: pendingCapture.parsed.title,
       date: pendingCapture.parsed.date ?? "2026-07-10",
       endDate: pendingCapture.parsed.endDate,
@@ -64,7 +63,7 @@ export function applyConfirmedCapture(
 
   if (pendingCapture.parsed.intent === "transaction") {
     const transaction: Transaction = {
-      id: `t-${nanoid(8)}`,
+      id: createUuid(),
       title: pendingCapture.parsed.title,
       amountCny: pendingCapture.parsed.amountCny ?? 0,
       category: "daily",
@@ -78,7 +77,7 @@ export function applyConfirmedCapture(
 
   if (pendingCapture.parsed.intent === "bill") {
     const bill: RecurringBill = {
-      id: `rb-${nanoid(8)}`,
+      id: createUuid(),
       title: pendingCapture.parsed.title,
       amountCny: pendingCapture.parsed.amountCny ?? 0,
       dueDay: Number(pendingCapture.parsed.date?.slice(-2) ?? 1),
@@ -91,7 +90,7 @@ export function applyConfirmedCapture(
   }
 
   const memory: AiMemory = {
-    id: `m-${nanoid(8)}`,
+    id: createUuid(),
     contactId,
     content: pendingCapture.rawText,
     source: "ai",
@@ -140,7 +139,7 @@ export function acknowledgeEvent(
   const notificationLog: NotificationLog | null =
     event && !hasLog
       ? {
-          id: `n-${nanoid(8)}`,
+          id: createUuid(),
           eventId,
           title: event.title,
           channel: "push",

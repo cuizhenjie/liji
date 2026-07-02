@@ -1,6 +1,6 @@
-import { differenceInMinutes, isBefore, parseISO } from "date-fns";
-import { nanoid } from "nanoid";
+import { addDays, differenceInMinutes, isBefore, parseISO, startOfDay } from "date-fns";
 
+import { createUuid } from "./ids";
 import type { CalendarEvent, NotificationLog, ReminderLevel } from "./types";
 
 export function channelsForLevel(level: ReminderLevel, acknowledged = false) {
@@ -30,13 +30,19 @@ export function runReminderScan(
   events: CalendarEvent[],
   now = new Date("2026-07-01T09:00:00+08:00")
 ): NotificationLog[] {
+  const windowStart = startOfDay(now);
+  const windowEnd = addDays(windowStart, 16);
+
   return events
-    .filter((event) => event.status !== "done")
-    .filter((event) => isBefore(parseISO(`${event.date}T23:59:59`), new Date(now.getTime() + 1000 * 60 * 60 * 24 * 16)))
+    .filter((event) => event.status !== "done" && event.status !== "confirmed")
+    .filter((event) => {
+      const eventDate = parseISO(`${event.date}T00:00:00`);
+      return !isBefore(eventDate, windowStart) && isBefore(eventDate, windowEnd);
+    })
     .flatMap((event) => {
       const channels = channelsForLevel(event.reminderLevel);
       return channels.map<NotificationLog>((channel) => ({
-        id: nanoid(10),
+        id: createUuid(),
         eventId: event.id,
         title: event.title,
         channel,

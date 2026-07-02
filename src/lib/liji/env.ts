@@ -3,9 +3,22 @@ import { z } from "zod";
 const envSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1).optional(),
+  NEXT_PUBLIC_VAPID_PUBLIC_KEY: z.string().min(1).optional(),
+  VAPID_PRIVATE_KEY: z.string().min(1).optional(),
+  VAPID_SUBJECT: z.string().min(1).optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
   OPENAI_API_KEY: z.string().min(1).optional(),
   CRON_SECRET: z.string().min(1).optional(),
+  LIJI_DEFAULT_NOTIFY_PHONE: z.string().min(1).optional(),
+  LIJI_ENABLE_EXTERNAL_NOTIFICATIONS: z.string().optional(),
+  ALIYUN_ACCESS_KEY_ID: z.string().min(1).optional(),
+  ALIYUN_ACCESS_KEY_SECRET: z.string().min(1).optional(),
+  ALIYUN_REGION_ID: z.string().min(1).optional(),
+  ALIYUN_SMS_SIGN_NAME: z.string().min(1).optional(),
+  ALIYUN_SMS_TEMPLATE_CODE: z.string().min(1).optional(),
+  ALIYUN_VOICE_CALLED_SHOW_NUMBER: z.string().min(1).optional(),
+  ALIYUN_VOICE_TTS_CODE: z.string().min(1).optional(),
+  FULFILLMENT_CALLBACK_SECRET: z.string().min(1).optional(),
 });
 
 export const env = envSchema.parse(process.env);

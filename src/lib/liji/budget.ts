@@ -1,7 +1,6 @@
-import { nanoid } from "nanoid";
-
 import { countInclusiveDays } from "./calendar";
 import { getComplianceWarnings } from "./compliance";
+import { createUuid } from "./ids";
 import type { CalendarEvent, Contact, FulfillmentPlan, PlanItem } from "./types";
 
 const catalog = {
@@ -73,7 +72,7 @@ export function generateFestivalPlan(
 
   const items: PlanItem[] = [
     {
-      id: nanoid(8),
+      id: createUuid(),
       title: preferredGift.title,
       category: "gift",
       amountCny: giftAmount,
@@ -82,7 +81,7 @@ export function generateFestivalPlan(
       url: preferredGift.url,
     },
     {
-      id: nanoid(8),
+      id: createUuid(),
       title: catalog.strawberryCake.title,
       category: "cake",
       amountCny: cakeAmount,
@@ -91,7 +90,7 @@ export function generateFestivalPlan(
       url: catalog.strawberryCake.url,
     },
     {
-      id: nanoid(8),
+      id: createUuid(),
       title: catalog.familyDining.title,
       category: "dining",
       amountCny: diningAmount,
@@ -102,7 +101,7 @@ export function generateFestivalPlan(
   ];
 
   return {
-    id: nanoid(10),
+    id: createUuid(),
     scenario: "festival",
     title: `${event.title}履约方案`,
     contactId: contact?.id,
@@ -136,7 +135,7 @@ export function generateTravelPlan(input: {
       : [];
 
   return {
-    id: nanoid(10),
+    id: createUuid(),
     scenario: "travel",
     title: input.title,
     budgetCny: totalCny,
@@ -146,7 +145,7 @@ export function generateTravelPlan(input: {
     createdAt: (input.now ?? new Date("2026-07-01T09:00:00+08:00")).toISOString(),
     items: [
       {
-        id: nanoid(8),
+        id: createUuid(),
         title: `${input.destination}往返高铁/机票`,
         category: "transport",
         amountCny: transport,
@@ -155,7 +154,7 @@ export function generateTravelPlan(input: {
         url: `https://www.ctrip.com/?keyword=${encodeURIComponent(input.destination + " 机票 高铁")}`,
       },
       {
-        id: nanoid(8),
+        id: createUuid(),
         title: "客户地址 3 公里内高评分酒店",
         category: "hotel",
         amountCny: hotel,
@@ -164,7 +163,7 @@ export function generateTravelPlan(input: {
         url: `https://hotels.ctrip.com/?keyword=${encodeURIComponent(input.destination + " 商务酒店")}`,
       },
       {
-        id: nanoid(8),
+        id: createUuid(),
         title: "餐饮与打车弹性池",
         category: "buffer",
         amountCny: diningAndTaxi,

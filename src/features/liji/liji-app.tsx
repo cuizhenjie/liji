@@ -7,6 +7,7 @@ import {
   CalendarDaysIcon,
   CheckIcon,
   ClipboardCheckIcon,
+  DownloadIcon,
   GiftIcon,
   HandCoinsIcon,
   HomeIcon,
@@ -26,7 +27,6 @@ import {
   WalletCardsIcon,
   XIcon,
 } from "lucide-react";
-import { nanoid } from "nanoid";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -58,6 +58,14 @@ import {
   Progress,
   ProgressLabel,
 } from "@/components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -69,13 +77,25 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import type { CaptureSource } from "@/lib/liji/ai";
 import { deriveComplianceProfile } from "@/lib/liji/compliance";
 import { generateFestivalPlan, generateTravelPlan } from "@/lib/liji/budget";
+import {
+  addRecurringBill as addRecurringBillToWorkspace,
+  addTransaction as addTransactionToWorkspace,
+  updateBudgetTotal,
+} from "@/lib/liji/finance";
+import { buildPlanFulfillmentLinks } from "@/lib/liji/fulfillment";
+import { createUuid } from "@/lib/liji/ids";
+import type { IntegrationStatus } from "@/lib/liji/integrations";
 import {
   clearWorkspaceData,
   loadWorkspaceData,
   saveWorkspaceData,
 } from "@/lib/liji/persistence";
+import { createDeletionRequest, exportWorkspaceData } from "@/lib/liji/privacy";
+import { registerBrowserPushSubscription } from "@/lib/liji/push";
+import { createSupabaseBrowserClient } from "@/lib/liji/supabase-browser";
 import {
   acknowledgeEvent,
   acknowledgeNotificationLog,
@@ -90,6 +110,7 @@ import type {
   FulfillmentPlan,
   NotificationLog,
   PrivacySettings,
+  RecurringBill,
   Transaction,
   WorkspaceData,
 } from "@/lib/liji/types";
@@ -141,6 +162,18 @@ function badgeVariantForLevel(level: CalendarEvent["reminderLevel"]) {
   return "outline" as const;
 }
 
+function captureSourceLabel(source: CaptureItem["sourceType"] | undefined) {
+  const map: Record<CaptureItem["sourceType"], string> = {
+    text: "文字",
+    voice: "语音",
+    screenshot: "截图",
+    chat: "聊天",
+    bill: "账单",
+  };
+
+  return map[source ?? "text"];
+}
+
 function statusText(status: CaptureItem["status"] | FulfillmentPlan["status"]) {
   const map = {
     pending: "待确认",
@@ -154,57 +187,128 @@ function statusText(status: CaptureItem["status"] | FulfillmentPlan["status"]) {
   return map[status] ?? status;
 }
 
+async function postJson(path: string, body: unknown) {
+  try {
+    const response = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 function useWorkspace(initialData: WorkspaceData) {
   const [workspaceState, setWorkspaceState] = useState<{
     data: WorkspaceData;
-    storageState: "seed" | "restored" | "saved";
+    storageState: "seed" | "restored" | "saved" | "synced";
+    cloudSyncEnabled: boolean;
   }>(() => {
     if (typeof window === "undefined") {
-      return { data: initialData, storageState: "seed" };
+      return { data: initialData, storageState: "seed", cloudSyncEnabled: false };
     }
 
     const restored = loadWorkspaceData(window.localStorage);
     return restored
-      ? { data: restored, storageState: "restored" }
-      : { data: initialData, storageState: "seed" };
+      ? { data: restored, storageState: "restored", cloudSyncEnabled: false }
+      : { data: initialData, storageState: "seed", cloudSyncEnabled: false };
   });
 
   const data = workspaceState.data;
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function loadCloudWorkspace() {
+      try {
+        const response = await fetch("/api/workspace");
+        if (!response.ok) {
+          return;
+        }
+
+        const result = (await response.json()) as {
+          workspace?: WorkspaceData;
+          source?: "demo" | "supabase";
+        };
+
+        if (!cancelled && result.source === "supabase" && result.workspace) {
+          setWorkspaceState({
+            data: result.workspace,
+            storageState: "synced",
+            cloudSyncEnabled: true,
+          });
+        }
+      } catch {
+        // Demo/local mode remains available when the cloud workspace is unavailable.
+      }
+    }
+
+    void loadCloudWorkspace();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     saveWorkspaceData(window.localStorage, data);
   }, [data]);
+
+  useEffect(() => {
+    if (!workspaceState.cloudSyncEnabled || workspaceState.storageState !== "saved") {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void postJson("/api/workspace/sync", { workspace: data });
+    }, 700);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [data, workspaceState.cloudSyncEnabled, workspaceState.storageState]);
 
   return {
     data,
     storageState: workspaceState.storageState,
     resetWorkspace() {
       clearWorkspaceData(window.localStorage);
-      setWorkspaceState({ data: initialData, storageState: "seed" });
+      setWorkspaceState({
+        data: initialData,
+        storageState: "seed",
+        cloudSyncEnabled: false,
+      });
       toast.success("已重置为演示数据");
     },
     setContacts(updater: (contacts: Contact[]) => Contact[]) {
       setWorkspaceState((current) => ({
         data: { ...current.data, contacts: updater(current.data.contacts) },
         storageState: "saved",
+        cloudSyncEnabled: current.cloudSyncEnabled,
       }));
     },
     setEvents(updater: (events: CalendarEvent[]) => CalendarEvent[]) {
       setWorkspaceState((current) => ({
         data: { ...current.data, events: updater(current.data.events) },
         storageState: "saved",
+        cloudSyncEnabled: current.cloudSyncEnabled,
       }));
     },
     setPlans(updater: (plans: FulfillmentPlan[]) => FulfillmentPlan[]) {
       setWorkspaceState((current) => ({
         data: { ...current.data, plans: updater(current.data.plans) },
         storageState: "saved",
+        cloudSyncEnabled: current.cloudSyncEnabled,
       }));
     },
     setCaptures(updater: (captures: CaptureItem[]) => CaptureItem[]) {
       setWorkspaceState((current) => ({
         data: { ...current.data, captures: updater(current.data.captures) },
         storageState: "saved",
+        cloudSyncEnabled: current.cloudSyncEnabled,
       }));
     },
     setTransactions(updater: (transactions: Transaction[]) => Transaction[]) {
@@ -214,6 +318,7 @@ function useWorkspace(initialData: WorkspaceData) {
           transactions: updater(current.data.transactions),
         },
         storageState: "saved",
+        cloudSyncEnabled: current.cloudSyncEnabled,
       }));
     },
     setNotificationLogs(updater: (logs: NotificationLog[]) => NotificationLog[]) {
@@ -223,18 +328,21 @@ function useWorkspace(initialData: WorkspaceData) {
           notificationLogs: updater(current.data.notificationLogs),
         },
         storageState: "saved",
+        cloudSyncEnabled: current.cloudSyncEnabled,
       }));
     },
     setPrivacy(updater: (settings: PrivacySettings) => PrivacySettings) {
       setWorkspaceState((current) => ({
         data: { ...current.data, privacy: updater(current.data.privacy) },
         storageState: "saved",
+        cloudSyncEnabled: current.cloudSyncEnabled,
       }));
     },
     setData(updater: (current: WorkspaceData) => WorkspaceData) {
       setWorkspaceState((current) => ({
         data: updater(current.data),
         storageState: "saved",
+        cloudSyncEnabled: current.cloudSyncEnabled,
       }));
     },
   };
@@ -245,6 +353,7 @@ export function LijiApp({ initialData }: LijiAppProps) {
   const { data } = workspace;
   const [activeSection, setActiveSection] = useState<SectionId>("dashboard");
   const [captureText, setCaptureText] = useState("下周五是女儿5岁生日，预算2000元");
+  const [captureSource, setCaptureSource] = useState<CaptureSource>("text");
   const [draftName, setDraftName] = useState("");
   const [draftRelation, setDraftRelation] = useState("");
   const [draftLabels, setDraftLabels] = useState("重要客户,国企高管");
@@ -252,6 +361,9 @@ export function LijiApp({ initialData }: LijiAppProps) {
   const [festivalBudget, setFestivalBudget] = useState("2000");
   const [travelDestination, setTravelDestination] = useState("广州");
   const [dailyLimit, setDailyLimit] = useState("2400");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authUserEmail, setAuthUserEmail] = useState<string | null>(null);
+  const [integrations, setIntegrations] = useState<IntegrationStatus[]>([]);
   const [isPending, startTransition] = useTransition();
 
   const urgentEvents = useMemo(
@@ -263,6 +375,60 @@ export function LijiApp({ initialData }: LijiAppProps) {
     (budget) => budget.category === "relationship"
   );
 
+  useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      void navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    }
+  }, []);
+
+  useEffect(() => {
+    const supabase = createSupabaseBrowserClient();
+    if (!supabase) {
+      return;
+    }
+
+    void supabase.auth.getUser().then(({ data: userData }) => {
+      setAuthUserEmail(userData.user?.email ?? null);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthUserEmail(session?.user.email ?? null);
+    });
+
+    return () => {
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadIntegrations() {
+      try {
+        const response = await fetch("/api/integrations");
+        if (!response.ok) {
+          return;
+        }
+
+        const result = (await response.json()) as {
+          integrations?: IntegrationStatus[];
+        };
+
+        if (!cancelled) {
+          setIntegrations(result.integrations ?? []);
+        }
+      } catch {
+        // Integration status is informational; the app remains usable without it.
+      }
+    }
+
+    void loadIntegrations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function handleParseCapture() {
     if (!captureText.trim()) {
       toast.error("请输入采集内容");
@@ -273,9 +439,17 @@ export function LijiApp({ initialData }: LijiAppProps) {
       const response = await fetch("/api/parse-input", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: captureText }),
+        body: JSON.stringify({
+          text: captureText,
+          source: captureSource,
+          allowCloudModel: data.privacy.cloudModelEnabled,
+        }),
       });
-      const result = (await response.json()) as { capture?: CaptureItem; error?: string };
+      const result = (await response.json()) as {
+        capture?: CaptureItem;
+        error?: string;
+        provider?: "local-rules" | "openai";
+      };
 
       if (!response.ok || !result.capture) {
         toast.error(result.error ?? "解析失败");
@@ -284,8 +458,18 @@ export function LijiApp({ initialData }: LijiAppProps) {
 
       workspace.setCaptures((captures) => [result.capture!, ...captures]);
       setCaptureText("");
-      toast.success("已进入任务与确认中心");
+      toast.success(result.provider === "openai" ? "云端 AI 已解析，待确认" : "已进入任务与确认中心");
     });
+  }
+
+  function updateCaptureDraft(captureId: string, patch: Partial<CaptureItem["parsed"]>) {
+    workspace.setCaptures((captures) =>
+      captures.map((capture) =>
+        capture.id === captureId
+          ? { ...capture, parsed: { ...capture.parsed, ...patch } }
+          : capture
+      )
+    );
   }
 
   function confirmCapture(capture: CaptureItem) {
@@ -309,7 +493,7 @@ export function LijiApp({ initialData }: LijiAppProps) {
     }
 
     const contact: Contact = {
-      id: `c-${nanoid(8)}`,
+      id: createUuid(),
       name: draftName,
       relation: draftRelation,
       labels,
@@ -329,6 +513,7 @@ export function LijiApp({ initialData }: LijiAppProps) {
     };
 
     workspace.setContacts((contacts) => [contact, ...contacts]);
+    void postJson("/api/contacts", contact);
     setDraftName("");
     setDraftRelation("");
     setDraftPreference("");
@@ -339,13 +524,14 @@ export function LijiApp({ initialData }: LijiAppProps) {
     workspace.setContacts((contacts) =>
       contacts.filter((contact) => contact.id !== contactId)
     );
+    void fetch(`/api/contacts?id=${encodeURIComponent(contactId)}`, { method: "DELETE" });
     toast("已移除联系人");
   }
 
   function generateBirthdayPlan() {
     const event = data.events.find((item) => item.id === "e-daughter-birthday") ?? data.events[0];
     const contact = data.contacts.find((item) => item.id === event.contactId);
-    const plan = generateFestivalPlan(event, contact, Number(festivalBudget) || 2000);
+    const plan = generateFestivalPlan(event, contact, Number(festivalBudget) || 2000, new Date());
     workspace.setPlans((plans) => [plan, ...plans]);
     toast.success("已生成生日履约方案");
   }
@@ -357,6 +543,7 @@ export function LijiApp({ initialData }: LijiAppProps) {
       endDate: "2026-07-10",
       destination: travelDestination,
       dailyLimitCny: Number(dailyLimit) || 2400,
+      now: new Date(),
     });
     workspace.setPlans((plans) => [plan, ...plans]);
     toast.success("已生成差旅方案");
@@ -371,11 +558,164 @@ export function LijiApp({ initialData }: LijiAppProps) {
     });
   }
 
+  async function registerPushNotifications() {
+    const result = await registerBrowserPushSubscription();
+    if (result.status === "registered") {
+      toast.success("Web Push 已注册");
+      const nextPrivacy = { ...data.privacy, webPushEnabled: true };
+      workspace.setPrivacy(() => nextPrivacy);
+      void postJson("/api/privacy/settings", nextPrivacy);
+      return;
+    }
+
+    toast.error(result.reason);
+  }
+
   function togglePrivacy(key: keyof PrivacySettings) {
-    workspace.setPrivacy((settings) => ({
-      ...settings,
-      [key]: !settings[key],
-    }));
+    const nextPrivacy = {
+      ...data.privacy,
+      [key]: !data.privacy[key],
+    };
+
+    workspace.setPrivacy(() => nextPrivacy);
+    void postJson("/api/privacy/settings", nextPrivacy);
+  }
+
+  function exportData() {
+    const exported = exportWorkspaceData(data);
+    const blob = new Blob([exported], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `liji-export-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    toast.success("已生成数据导出文件");
+  }
+
+  function requestLocalDeletion() {
+    void fetch("/api/privacy/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scope: "local" }),
+    });
+    const request = createDeletionRequest("local");
+    workspace.resetWorkspace();
+    toast.success(`本地删除请求已处理：${request.requestedAt.slice(0, 10)}`);
+  }
+
+  async function requestCloudDeletion() {
+    const response = await fetch("/api/privacy/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scope: "cloud" }),
+    });
+    const result = (await response.json()) as {
+      deletion?: { requestedAt: string };
+      error?: string;
+      deletedTables?: string[];
+      source?: "demo" | "supabase";
+    };
+
+    if (!response.ok) {
+      toast.error(result.error ?? "云端删除失败");
+      return;
+    }
+
+    if (result.source === "supabase") {
+      workspace.resetWorkspace();
+      toast.success(`云端数据已删除：${result.deletedTables?.length ?? 0} 张表`);
+      return;
+    }
+
+    toast.success(`云端删除请求已登记：${result.deletion?.requestedAt.slice(0, 10) ?? "待处理"}`);
+  }
+
+  async function sendLoginLink() {
+    const email = authEmail.trim();
+    if (!email) {
+      toast.error("请输入登录邮箱");
+      return;
+    }
+
+    const supabase = createSupabaseBrowserClient();
+    if (!supabase) {
+      toast.error("Supabase 环境变量未配置");
+      return;
+    }
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    toast.success("登录链接已发送，请查收邮箱");
+  }
+
+  async function signOut() {
+    const supabase = createSupabaseBrowserClient();
+    if (!supabase) {
+      toast.error("Supabase 环境变量未配置");
+      return;
+    }
+
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    setAuthUserEmail(null);
+    toast.success("已退出云端账号");
+  }
+
+  function addFinanceBill(input: {
+    title: string;
+    amountCny: number;
+    dueDay: number;
+    accountLabel: string;
+  }) {
+    const bill: RecurringBill = {
+      id: createUuid(),
+      title: input.title,
+      amountCny: input.amountCny,
+      dueDay: input.dueDay,
+      accountLabel: input.accountLabel,
+      reminderLevel: "level_2",
+      enabled: true,
+    };
+
+    workspace.setData((current) => addRecurringBillToWorkspace(current, bill));
+    toast.success("周期账单已新增");
+  }
+
+  function addFinanceTransaction(input: {
+    title: string;
+    amountCny: number;
+    category: Transaction["category"];
+  }) {
+    const transaction: Transaction = {
+      id: createUuid(),
+      title: input.title,
+      amountCny: input.amountCny,
+      category: input.category,
+      occurredAt: new Date().toISOString().slice(0, 10),
+      source: "manual",
+    };
+
+    workspace.setData((current) => addTransactionToWorkspace(current, transaction));
+    toast.success("交易已入账并更新复盘");
+  }
+
+  function updateBudgetLimit(budgetId: string, totalCny: number) {
+    workspace.setData((current) => updateBudgetTotal(current, budgetId, totalCny));
   }
 
   function confirmPlan(planId: string) {
@@ -412,6 +752,21 @@ export function LijiApp({ initialData }: LijiAppProps) {
       })),
     }));
     toast.success("AI 记忆已校准");
+  }
+
+  function updateMemoryContent(memoryId: string, content: string) {
+    workspace.setData((current) => ({
+      ...current,
+      aiMemories: current.aiMemories.map((memory) =>
+        memory.id === memoryId
+          ? { ...memory, content, confidence: 1, correctedAt: new Date().toISOString() }
+          : memory
+      ),
+      contacts: current.contacts.map((contact) => ({
+        ...contact,
+        aiMemoryHealth: Math.min(100, contact.aiMemoryHealth + 1),
+      })),
+    }));
   }
 
   return (
@@ -456,7 +811,13 @@ export function LijiApp({ initialData }: LijiAppProps) {
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge variant="outline" className="hidden md:inline-flex">
-                    {workspace.storageState === "restored" ? "已恢复本地数据" : workspace.storageState === "saved" ? "已本地保存" : "演示数据"}
+                    {workspace.storageState === "synced"
+                      ? "已同步云端数据"
+                      : workspace.storageState === "restored"
+                        ? "已恢复本地数据"
+                        : workspace.storageState === "saved"
+                          ? "已本地保存"
+                          : "演示数据"}
                   </Badge>
                   <Button variant="outline" size="sm" onClick={runReminderScanNow} disabled={isPending}>
                     {isPending ? <Loader2Icon data-icon="inline-start" /> : <RotateCwIcon data-icon="inline-start" />}
@@ -476,6 +837,22 @@ export function LijiApp({ initialData }: LijiAppProps) {
                     onChange={(event) => setCaptureText(event.target.value)}
                     placeholder="输入：下周五是女儿5岁生日，预算2000元"
                   />
+                  <InputGroupAddon>
+                    <Select value={captureSource} onValueChange={(value) => setCaptureSource(value as CaptureSource)}>
+                      <SelectTrigger size="sm" aria-label="采集来源">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="text">文字</SelectItem>
+                          <SelectItem value="voice">语音</SelectItem>
+                          <SelectItem value="screenshot">截图</SelectItem>
+                          <SelectItem value="chat">聊天</SelectItem>
+                          <SelectItem value="bill">账单</SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </InputGroupAddon>
                   <InputGroupAddon align="inline-end">
                     <InputGroupButton aria-label="语音录入">
                       <MicIcon />
@@ -499,6 +876,7 @@ export function LijiApp({ initialData }: LijiAppProps) {
                   relationshipBudget={relationshipBudget}
                   onConfirm={confirmCapture}
                   onReject={rejectCapture}
+                  onEditCapture={updateCaptureDraft}
                   onBirthdayPlan={generateBirthdayPlan}
                   onNavigate={setActiveSection}
                 />
@@ -517,6 +895,7 @@ export function LijiApp({ initialData }: LijiAppProps) {
                   onAddContact={addContact}
                   onDeleteContact={deleteContact}
                   onCorrectMemory={correctMemory}
+                  onUpdateMemory={updateMemoryContent}
                 />
               )}
               {activeSection === "calendar" && (
@@ -537,9 +916,30 @@ export function LijiApp({ initialData }: LijiAppProps) {
                   onBookmarkPlan={bookmarkPlan}
                 />
               )}
-              {activeSection === "finance" && <FinanceSection data={data} />}
+              {activeSection === "finance" && (
+                <FinanceSection
+                  data={data}
+                  onAddBill={addFinanceBill}
+                  onAddTransaction={addFinanceTransaction}
+                  onUpdateBudget={updateBudgetLimit}
+                />
+              )}
               {activeSection === "privacy" && (
-                <PrivacySection data={data} onToggle={togglePrivacy} onReset={workspace.resetWorkspace} />
+                <PrivacySection
+                  data={data}
+                  onToggle={togglePrivacy}
+                  onReset={workspace.resetWorkspace}
+                  onExport={exportData}
+                  onDeleteLocal={requestLocalDeletion}
+                  onDeleteCloud={requestCloudDeletion}
+                  onRegisterPush={registerPushNotifications}
+                  authEmail={authEmail}
+                  authUserEmail={authUserEmail}
+                  integrations={integrations}
+                  onAuthEmail={setAuthEmail}
+                  onSendLoginLink={sendLoginLink}
+                  onSignOut={signOut}
+                />
               )}
             </section>
 
@@ -597,6 +997,7 @@ function DashboardSection(props: {
   relationshipBudget: WorkspaceData["budgets"][number] | undefined;
   onConfirm: (capture: CaptureItem) => void;
   onReject: (captureId: string) => void;
+  onEditCapture: (captureId: string, patch: Partial<CaptureItem["parsed"]>) => void;
   onBirthdayPlan: () => void;
   onNavigate: (section: SectionId) => void;
 }) {
@@ -648,12 +1049,37 @@ function DashboardSection(props: {
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge variant="secondary">{capture.parsed.intent}</Badge>
+                          <Badge variant="outline">{captureSourceLabel(capture.sourceType)}</Badge>
                           <span className="font-medium">{capture.parsed.title}</span>
                           <span className="text-xs text-muted-foreground">
                             {Math.round(capture.parsed.confidence * 100)}%
                           </span>
                         </div>
                         <p className="mt-2 text-sm text-muted-foreground">{capture.maskedText}</p>
+                        <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-[1.4fr_1fr_1fr]">
+                          <Input
+                            aria-label={`编辑标题 ${capture.parsed.title}`}
+                            value={capture.parsed.title}
+                            onChange={(event) => props.onEditCapture(capture.id, { title: event.target.value })}
+                          />
+                          <Input
+                            aria-label={`编辑日期 ${capture.parsed.title}`}
+                            value={capture.parsed.date ?? ""}
+                            onChange={(event) => props.onEditCapture(capture.id, { date: event.target.value })}
+                          />
+                          <Input
+                            aria-label={`编辑预算 ${capture.parsed.title}`}
+                            inputMode="numeric"
+                            value={capture.parsed.budgetCny ?? capture.parsed.amountCny ?? ""}
+                            onChange={(event) => {
+                              const value = Number(event.target.value);
+                              props.onEditCapture(capture.id, {
+                                budgetCny: Number.isFinite(value) ? value : undefined,
+                                amountCny: Number.isFinite(value) ? value : undefined,
+                              });
+                            }}
+                          />
+                        </div>
                       </div>
                       <div className="flex gap-2">
                         <Button
@@ -761,6 +1187,7 @@ function ContactsSection(props: {
   onAddContact: () => void;
   onDeleteContact: (id: string) => void;
   onCorrectMemory: (id: string) => void;
+  onUpdateMemory: (id: string, content: string) => void;
 }) {
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -816,7 +1243,12 @@ function ContactsSection(props: {
             <div className="flex flex-col gap-3">
               {props.data.aiMemories.map((memory) => (
                 <div key={memory.id} className="rounded-lg border p-3">
-                  <p className="text-sm leading-6">{memory.content}</p>
+                  <Textarea
+                    aria-label={`编辑记忆 ${memory.id}`}
+                    value={memory.content}
+                    onChange={(event) => props.onUpdateMemory(memory.id, event.target.value)}
+                    rows={3}
+                  />
                   <div className="mt-3 flex items-center justify-between gap-3">
                     <Badge variant={memory.correctedAt ? "secondary" : "outline"}>
                       {memory.correctedAt ? "已校准" : `${Math.round(memory.confidence * 100)}%`}
@@ -948,6 +1380,7 @@ function FulfillmentSection(props: {
           <PlanCard
             key={plan.id}
             plan={plan}
+            linksEnabled={props.data.privacy.thirdPartyLinksEnabled}
             onConfirm={props.onConfirmPlan}
             onBookmark={props.onBookmarkPlan}
           />
@@ -957,7 +1390,55 @@ function FulfillmentSection(props: {
   );
 }
 
-function FinanceSection({ data }: { data: WorkspaceData }) {
+function FinanceSection({
+  data,
+  onAddBill,
+  onAddTransaction,
+  onUpdateBudget,
+}: {
+  data: WorkspaceData;
+  onAddBill: (input: { title: string; amountCny: number; dueDay: number; accountLabel: string }) => void;
+  onAddTransaction: (input: { title: string; amountCny: number; category: Transaction["category"] }) => void;
+  onUpdateBudget: (budgetId: string, totalCny: number) => void;
+}) {
+  const [billTitle, setBillTitle] = useState("物业/水电");
+  const [billAmount, setBillAmount] = useState("680");
+  const [billDueDay, setBillDueDay] = useState("15");
+  const [billAccount, setBillAccount] = useState("待关联扣款账户");
+  const [transactionTitle, setTransactionTitle] = useState("客户午餐");
+  const [transactionAmount, setTransactionAmount] = useState("268");
+  const [transactionCategory, setTransactionCategory] = useState<Transaction["category"]>("relationship");
+
+  function submitBill() {
+    const amountCny = Number(billAmount);
+    const dueDay = Number(billDueDay);
+    if (!billTitle.trim() || !Number.isFinite(amountCny) || !Number.isFinite(dueDay)) {
+      toast.error("请填写有效账单信息");
+      return;
+    }
+
+    onAddBill({
+      title: billTitle,
+      amountCny,
+      dueDay: Math.min(31, Math.max(1, Math.round(dueDay))),
+      accountLabel: billAccount || "待关联扣款账户",
+    });
+  }
+
+  function submitTransaction() {
+    const amountCny = Number(transactionAmount);
+    if (!transactionTitle.trim() || !Number.isFinite(amountCny)) {
+      toast.error("请填写有效交易信息");
+      return;
+    }
+
+    onAddTransaction({
+      title: transactionTitle,
+      amountCny,
+      category: transactionCategory,
+    });
+  }
+
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
       <Card>
@@ -966,6 +1447,31 @@ function FinanceSection({ data }: { data: WorkspaceData }) {
           <CardDescription>固定支出与扣款日前置提醒。</CardDescription>
         </CardHeader>
         <CardContent>
+          <FieldGroup>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-[1.2fr_0.8fr_0.6fr]">
+              <Field>
+                <FieldLabel>账单名称</FieldLabel>
+                <Input aria-label="账单名称" value={billTitle} onChange={(event) => setBillTitle(event.target.value)} />
+              </Field>
+              <Field>
+                <FieldLabel>金额</FieldLabel>
+                <Input aria-label="账单金额" value={billAmount} inputMode="numeric" onChange={(event) => setBillAmount(event.target.value)} />
+              </Field>
+              <Field>
+                <FieldLabel>扣款日</FieldLabel>
+                <Input aria-label="账单扣款日" value={billDueDay} inputMode="numeric" onChange={(event) => setBillDueDay(event.target.value)} />
+              </Field>
+            </div>
+            <Field>
+              <FieldLabel>扣款账户</FieldLabel>
+              <Input aria-label="账单扣款账户" value={billAccount} onChange={(event) => setBillAccount(event.target.value)} />
+            </Field>
+            <Button onClick={submitBill}>
+              <PlusIcon data-icon="inline-start" />
+              新增周期账单
+            </Button>
+          </FieldGroup>
+          <Separator className="my-4" />
           <div className="flex flex-col gap-3">
             {data.recurringBills.map((bill) => (
               <div key={bill.id} className="flex items-center justify-between gap-4 rounded-lg border p-3">
@@ -989,6 +1495,59 @@ function FinanceSection({ data }: { data: WorkspaceData }) {
           <CardDescription>{data.insight.period} 支出流向</CardDescription>
         </CardHeader>
         <CardContent>
+          <FieldGroup>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-[1.2fr_0.8fr_0.8fr]">
+              <Field>
+                <FieldLabel>交易名称</FieldLabel>
+                <Input aria-label="交易名称" value={transactionTitle} onChange={(event) => setTransactionTitle(event.target.value)} />
+              </Field>
+              <Field>
+                <FieldLabel>金额</FieldLabel>
+                <Input aria-label="交易金额" value={transactionAmount} inputMode="numeric" onChange={(event) => setTransactionAmount(event.target.value)} />
+              </Field>
+              <Field>
+                <FieldLabel>分类</FieldLabel>
+                <Select value={transactionCategory} onValueChange={(value) => setTransactionCategory(value as Transaction["category"])}>
+                  <SelectTrigger aria-label="交易分类">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="fixed">刚需固定</SelectItem>
+                      <SelectItem value="relationship">人情关怀</SelectItem>
+                      <SelectItem value="travel">差旅出行</SelectItem>
+                      <SelectItem value="daily">日常弹性</SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </Field>
+            </div>
+            <Button onClick={submitTransaction}>
+              <PlusIcon data-icon="inline-start" />
+              手动入账
+            </Button>
+          </FieldGroup>
+          <Separator className="my-4" />
+          <div className="flex flex-col gap-3">
+            {data.budgets.map((budget) => (
+              <Field key={budget.id}>
+                <FieldLabel>{budget.label}预算</FieldLabel>
+                <Input
+                  aria-label={`调整${budget.label}预算`}
+                  inputMode="numeric"
+                  value={budget.totalCny}
+                  onChange={(event) => {
+                    const value = Number(event.target.value);
+                    if (Number.isFinite(value)) {
+                      onUpdateBudget(budget.id, value);
+                    }
+                  }}
+                />
+                <FieldDescription>已用 {formatCny(budget.spentCny)}</FieldDescription>
+              </Field>
+            ))}
+          </div>
+          <Separator className="my-4" />
           <div className="flex flex-col gap-4">
             <InsightProgress label="刚需固定" value={data.insight.fixedCny} total={data.insight.fixedCny + data.insight.relationshipCny + data.insight.travelCny + data.insight.elasticCny} />
             <InsightProgress label="人情关怀" value={data.insight.relationshipCny} total={data.insight.fixedCny + data.insight.relationshipCny + data.insight.travelCny + data.insight.elasticCny} />
@@ -1013,10 +1572,30 @@ function PrivacySection({
   data,
   onToggle,
   onReset,
+  onExport,
+  onDeleteLocal,
+  onDeleteCloud,
+  onRegisterPush,
+  authEmail,
+  authUserEmail,
+  integrations,
+  onAuthEmail,
+  onSendLoginLink,
+  onSignOut,
 }: {
   data: WorkspaceData;
   onToggle: (key: keyof PrivacySettings) => void;
   onReset: () => void;
+  onExport: () => void;
+  onDeleteLocal: () => void;
+  onDeleteCloud: () => void;
+  onRegisterPush: () => void;
+  authEmail: string;
+  authUserEmail: string | null;
+  integrations: IntegrationStatus[];
+  onAuthEmail: (value: string) => void;
+  onSendLoginLink: () => void;
+  onSignOut: () => void;
 }) {
   const rows: Array<{ key: keyof PrivacySettings; title: string; detail: string }> = [
     { key: "piiMasking", title: "PII 脱敏", detail: "姓名、电话、地址、公司名替换为临时占位符。" },
@@ -1033,23 +1612,99 @@ function PrivacySection({
         <CardTitle>隐私与授权中心</CardTitle>
         <CardDescription>敏感数据、模型调用和通知通道集中管理。</CardDescription>
         <CardAction>
-          <Button size="sm" variant="outline" onClick={onReset}>
-            <RotateCwIcon data-icon="inline-start" />
-            重置演示数据
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={onExport}>
+              <DownloadIcon data-icon="inline-start" />
+              导出数据
+            </Button>
+            <Button size="sm" variant="outline" onClick={onRegisterPush}>
+              <BellRingIcon data-icon="inline-start" />
+              注册Push
+            </Button>
+            <Button size="sm" variant="outline" onClick={onReset}>
+              <RotateCwIcon data-icon="inline-start" />
+              重置演示数据
+            </Button>
+            <Button size="sm" variant="destructive" onClick={onDeleteLocal}>
+              <Trash2Icon data-icon="inline-start" />
+              删除本地数据
+            </Button>
+            <Button size="sm" variant="destructive" onClick={onDeleteCloud}>
+              <Trash2Icon data-icon="inline-start" />
+              删除云端数据
+            </Button>
+          </div>
         </CardAction>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          {rows.map((row) => (
-            <div key={row.key} className="flex items-center justify-between gap-4 rounded-lg border p-4">
-              <div>
-                <div className="font-medium">{row.title}</div>
-                <div className="mt-1 text-sm leading-5 text-muted-foreground">{row.detail}</div>
+        <div className="flex flex-col gap-4">
+          <div className="rounded-lg border p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <div className="min-w-0 flex-1">
+                <div className="font-medium">账号与云同步</div>
+                <div className="mt-1 text-sm text-muted-foreground">
+                  {authUserEmail ? `当前账号：${authUserEmail}` : "使用邮箱登录后启用 Supabase 工作区同步。"}
+                </div>
               </div>
-              <Switch checked={data.privacy[row.key]} onCheckedChange={() => onToggle(row.key)} />
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  aria-label="登录邮箱"
+                  value={authEmail}
+                  onChange={(event) => onAuthEmail(event.target.value)}
+                  placeholder="name@example.com"
+                  type="email"
+                />
+                {authUserEmail ? (
+                  <Button variant="outline" onClick={onSignOut}>
+                    退出
+                  </Button>
+                ) : (
+                  <Button onClick={onSendLoginLink}>
+                    发送登录链接
+                  </Button>
+                )}
+              </div>
             </div>
-          ))}
+          </div>
+
+          <div className="rounded-lg border p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="font-medium">第三方授权状态</div>
+                <div className="mt-1 text-sm text-muted-foreground">模型、通知、履约与云端数据配置。</div>
+              </div>
+              <Badge variant="outline">{integrations.length} 项</Badge>
+            </div>
+            <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+              {integrations.map((integration) => (
+                <div key={integration.provider} className="rounded-md bg-muted/50 px-3 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium">{integration.label}</span>
+                    <Badge variant={integration.mode === "configured" ? "secondary" : "outline"}>
+                      {integration.mode === "configured"
+                        ? "已配置"
+                        : integration.mode === "search-link"
+                          ? "搜索跳转"
+                          : "未配置"}
+                    </Badge>
+                  </div>
+                  <div className="mt-1 text-xs leading-5 text-muted-foreground">{integration.detail}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            {rows.map((row) => (
+              <div key={row.key} className="flex items-center justify-between gap-4 rounded-lg border p-4">
+                <div>
+                  <div className="font-medium">{row.title}</div>
+                  <div className="mt-1 text-sm leading-5 text-muted-foreground">{row.detail}</div>
+                </div>
+                <Switch checked={data.privacy[row.key]} onCheckedChange={() => onToggle(row.key)} />
+              </div>
+            ))}
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -1208,13 +1863,34 @@ function ContactList({
 
 function PlanCard({
   plan,
+  linksEnabled,
   onConfirm,
   onBookmark,
 }: {
   plan: FulfillmentPlan;
+  linksEnabled: boolean;
   onConfirm: (planId: string) => void;
   onBookmark: (planId: string) => void;
 }) {
+  const trackedLinks = linksEnabled ? buildPlanFulfillmentLinks(plan) : [];
+
+  function recordFulfillmentClick(itemId: string, link: ReturnType<typeof buildPlanFulfillmentLinks>[number] | undefined) {
+    if (!link) {
+      return;
+    }
+
+    void fetch("/api/fulfillment/click", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        planId: plan.id,
+        planItemId: itemId,
+        provider: link.provider,
+        targetUrl: link.url,
+      }),
+    });
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -1235,25 +1911,40 @@ function PlanCard({
           ))}
           {plan.items.map((item) => (
             <div key={item.id} className="flex flex-wrap items-start justify-between gap-3 rounded-lg border p-3">
+              {(() => {
+                const trackedLink = trackedLinks.find((link) => link.label === item.title);
+
+                return (
+                  <>
               <div>
                 <div className="font-medium">{item.title}</div>
                 <p className="mt-1 text-sm text-muted-foreground">{item.rationale}</p>
               </div>
               <div className="flex items-center gap-2">
                 <span className="font-semibold">{formatCny(item.amountCny)}</span>
-                {item.url ? (
+                {linksEnabled && item.url ? (
                   <Button
                     size="sm"
                     variant="outline"
                     nativeButton={false}
-                    render={<a href={item.url} target="_blank" rel="noreferrer" />}
+                    render={
+                      <a
+                        href={trackedLink?.url ?? item.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={() => recordFulfillmentClick(item.id, trackedLink)}
+                      />
+                    }
                   >
                     外部跳转
                   </Button>
                 ) : (
-                  <Badge variant="secondary">{item.provider}</Badge>
+                  <Badge variant="secondary">{linksEnabled ? item.provider : "跳转关闭"}</Badge>
                 )}
               </div>
+                  </>
+                );
+              })()}
             </div>
           ))}
         </div>

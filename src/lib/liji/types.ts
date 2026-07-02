@@ -127,10 +127,13 @@ export type PiiMaskResult = {
   tokens: PiiToken[];
 };
 
+export type CaptureSource = "text" | "voice" | "screenshot" | "chat" | "bill";
+
 export type CaptureItem = {
   id: string;
   rawText: string;
   maskedText: string;
+  sourceType: CaptureSource;
   status: CaptureStatus;
   parsed: ParsedInput;
   piiTokens: PiiToken[];

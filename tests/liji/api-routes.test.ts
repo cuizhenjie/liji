@@ -1,0 +1,227 @@
+import { describe, expect, it } from "vitest";
+
+import { DELETE as deleteContact, POST as saveContact } from "../../src/app/api/contacts/route";
+import { GET as authCallback } from "../../src/app/auth/callback/route";
+import { POST as fulfillmentCallback } from "../../src/app/api/fulfillment/callback/route";
+import { POST as clickFulfillment } from "../../src/app/api/fulfillment/click/route";
+import { POST as generatePlan } from "../../src/app/api/generate-plan/route";
+import { GET as getIntegrations } from "../../src/app/api/integrations/route";
+import { GET as getMonthlyInsight } from "../../src/app/api/monthly-insight/route";
+import { GET as getMonthlyReport } from "../../src/app/api/monthly-report/route";
+import { POST as parseInput } from "../../src/app/api/parse-input/route";
+import { POST as savePushSubscription } from "../../src/app/api/push-subscriptions/route";
+import { POST as deletePrivacy } from "../../src/app/api/privacy/delete/route";
+import { GET as exportPrivacy } from "../../src/app/api/privacy/export/route";
+import { POST as savePrivacySettings } from "../../src/app/api/privacy/settings/route";
+import { POST as sendNotification } from "../../src/app/api/send-notification/route";
+import { GET as getWorkspace } from "../../src/app/api/workspace/route";
+import { POST as syncWorkspace } from "../../src/app/api/workspace/sync/route";
+import { demoWorkspace } from "../../src/lib/liji/sample-data";
+
+function jsonRequest(path: string, body: unknown) {
+  return new Request(`http://localhost${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+describe("productization API routes", () => {
+  it("redirects auth callbacks back into the app", async () => {
+    const response = await authCallback(
+      new Request("http://localhost/auth/callback?code=test-code&next=/")
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe("http://localhost/");
+  });
+
+  it("rejects external auth callback redirect targets", async () => {
+    const response = await authCallback(
+      new Request("http://localhost/auth/callback?next=https://example.com/phish")
+    );
+
+    expect(response.headers.get("location")).toBe("http://localhost/");
+  });
+
+  it("serves demo workspace and accepts demo contact/privacy writes without Supabase", async () => {
+    const workspaceResponse = await getWorkspace();
+    const workspace = await workspaceResponse.json();
+    const contactResponse = await saveContact(
+      jsonRequest("/api/contacts", {
+        id: "11111111-1111-4111-8111-111111111111",
+        name: "赵敏",
+        relation: "合作伙伴",
+        labels: ["重要客户"],
+        calendarType: "solar",
+        preferences: [],
+        compliance: {
+          riskTags: ["重要客户"],
+          policyNote: "保留预算与发票记录。",
+        },
+        aiMemoryHealth: 80,
+      })
+    );
+    const contact = await contactResponse.json();
+    const deleteContactResponse = await deleteContact(
+      new Request("http://localhost/api/contacts?id=11111111-1111-4111-8111-111111111111", {
+        method: "DELETE",
+      })
+    );
+    const deletedContact = await deleteContactResponse.json();
+    const privacyResponse = await savePrivacySettings(
+      jsonRequest("/api/privacy/settings", {
+        piiMasking: true,
+        cloudModelEnabled: false,
+        webPushEnabled: true,
+        smsEnabled: false,
+        voiceCallEnabled: false,
+        thirdPartyLinksEnabled: true,
+      })
+    );
+    const privacy = await privacyResponse.json();
+
+    expect(workspace.source).toBe("demo");
+    expect(workspace.workspace.contacts.length).toBeGreaterThan(0);
+    expect(contact.source).toBe("demo");
+    expect(contact.contact.name).toBe("赵敏");
+    expect(deletedContact.deleted).toBe(true);
+    expect(deletedContact.source).toBe("demo");
+    expect(privacy.source).toBe("demo");
+    expect(privacy.privacy.piiMasking).toBe(true);
+  });
+
+  it("accepts workspace sync payloads in demo mode", async () => {
+    const response = await syncWorkspace(
+      jsonRequest("/api/workspace/sync", { workspace: demoWorkspace })
+    );
+    const payload = await response.json();
+
+    expect(payload.source).toBe("demo");
+    expect(payload.sync.tables.contacts).toBe(demoWorkspace.contacts.length);
+    expect(payload.sync.tables.plan_items).toBeGreaterThan(0);
+  });
+
+  it("uses demo fallback for parser, plan and monthly insight when unauthenticated", async () => {
+    const parseResponse = await parseInput(
+      jsonRequest("/api/parse-input", {
+        text: "下周五是女儿5岁生日，预算2000元",
+        source: "text",
+      })
+    );
+    const parsed = await parseResponse.json();
+    const planResponse = await generatePlan(
+      jsonRequest("/api/generate-plan", {
+        scenario: "festival",
+        budgetCny: 2000,
+      })
+    );
+    const plan = await planResponse.json();
+    const insightResponse = await getMonthlyInsight();
+    const insight = await insightResponse.json();
+    const customInsightResponse = await getMonthlyInsight(
+      new Request("http://localhost/api/monthly-insight?period=2026-05")
+    );
+    const customInsight = await customInsightResponse.json();
+
+    expect(parsed.source).toBe("demo");
+    expect(parsed.capture.parsed.intent).toBe("event");
+    expect(parsed.capture.sourceType).toBe("text");
+    expect(plan.source).toBe("demo");
+    expect(plan.plan.items.length).toBeGreaterThan(0);
+    expect(insight.source).toBe("demo");
+    expect(insight.insight.healthScore).toBeGreaterThan(0);
+    expect(customInsight.insight.period).toBe("2026-05");
+  });
+
+  it("returns integration status without exposing secrets", async () => {
+    const response = await getIntegrations();
+    const payload = await response.json();
+
+    expect(payload.integrations.length).toBeGreaterThan(0);
+    expect(JSON.stringify(payload.integrations)).not.toContain("SUPABASE_SERVICE_ROLE_KEY");
+  });
+
+  it("exports redacted data and creates deletion requests", async () => {
+    const exportResponse = await exportPrivacy();
+    const exported = await exportResponse.json();
+    const deleteResponse = await deletePrivacy(jsonRequest("/api/privacy/delete", { scope: "local" }));
+    const deleted = await deleteResponse.json();
+    const cloudDeleteResponse = await deletePrivacy(jsonRequest("/api/privacy/delete", { scope: "cloud" }));
+    const cloudDeleted = await cloudDeleteResponse.json();
+
+    expect(exported.export.schema).toBe("liji.workspace.export.v1");
+    expect(exported.export.data.contacts[0].name).toBe("[NAME]");
+    expect(exported.source).toBe("demo");
+    expect(deleted.deletion.status).toBe("queued");
+    expect(cloudDeleted.source).toBe("demo");
+    expect(cloudDeleted.deletedTables).toEqual([]);
+  });
+
+  it("queues notification delivery logs in demo mode", async () => {
+    const response = await sendNotification(
+      jsonRequest("/api/send-notification", {
+        title: "客户宴请",
+        level: "level_1",
+        acknowledged: false,
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload.source).toBe("demo");
+    expect(payload.channels).toEqual(["push", "sms", "voice"]);
+    expect(payload.logs).toHaveLength(3);
+    expect(payload.externalDelivery).toEqual([]);
+  });
+
+  it("accepts push subscriptions and fulfillment clicks", async () => {
+    const pushResponse = await savePushSubscription(
+      jsonRequest("/api/push-subscriptions", {
+        endpoint: "https://push.example.test/subscription/1",
+        keys: { p256dh: "p256dh", auth: "auth" },
+        userAgent: "vitest",
+      })
+    );
+    const push = await pushResponse.json();
+    const clickResponse = await clickFulfillment(
+      jsonRequest("/api/fulfillment/click", {
+        planId: "p-1",
+        planItemId: "pi-1",
+        provider: "jd",
+        targetUrl: "https://search.jd.com/Search?keyword=test",
+      })
+    );
+    const click = await clickResponse.json();
+
+    expect(push.subscription.enabled).toBe(true);
+    expect(click.click.provider).toBe("jd");
+    expect(click.audit.action).toBe("fulfill");
+  });
+
+  it("accepts fulfillment callback payloads in demo mode", async () => {
+    const response = await fulfillmentCallback(
+      jsonRequest("/api/fulfillment/callback", {
+        provider: "jd",
+        externalOrderId: "order-1",
+        status: "paid",
+        planId: "11111111-1111-4111-8111-111111111111",
+        amountCny: 1200,
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload.source).toBe("demo");
+    expect(payload.callback.status).toBe("paid");
+    expect(payload.persisted).toBe(false);
+  });
+
+  it("generates monthly report objects for persistence", async () => {
+    const response = await getMonthlyReport(
+      new Request("http://localhost/api/monthly-report?period=2026-05")
+    );
+    const payload = await response.json();
+
+    expect(payload.report.period).toBe("2026-05");
+    expect(payload.report.insight.healthScore).toBeGreaterThan(0);
+  });
+});

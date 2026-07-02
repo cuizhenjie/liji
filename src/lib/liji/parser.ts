@@ -1,9 +1,9 @@
-import { nanoid } from "nanoid";
-
 import { resolveRelativeChineseDate } from "./calendar";
+import { createUuid } from "./ids";
 import { maskPii } from "./pii";
 import {
   type CaptureItem,
+  type CaptureSource,
   type Contact,
   type ParsedInput,
   parsedInputSchema,
@@ -28,7 +28,8 @@ function extractAmount(input: string) {
 export function parseNaturalLanguageInput(
   rawText: string,
   contacts: Contact[] = [],
-  now = new Date("2026-07-01T09:00:00+08:00")
+  now = new Date("2026-07-01T09:00:00+08:00"),
+  sourceType: CaptureSource = "text"
 ): CaptureItem {
   const pii = maskPii(rawText, contacts);
   const contact = inferContact(rawText, contacts);
@@ -103,9 +104,10 @@ export function parseNaturalLanguageInput(
   }
 
   return {
-    id: nanoid(10),
+    id: createUuid(),
     rawText,
     maskedText: pii.maskedText,
+    sourceType,
     status: "pending",
     parsed: parsedInputSchema.parse(parsed),
     piiTokens: pii.tokens,

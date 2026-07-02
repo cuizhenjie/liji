@@ -1,5 +1,13 @@
 import type { CalendarEvent, MonthlyInsight, RecurringBill, Transaction } from "./types";
 
+export function previousMonthPeriod(now = new Date()) {
+  const year = now.getUTCFullYear();
+  const month = now.getUTCMonth();
+  const previous = new Date(Date.UTC(year, month - 1, 1));
+
+  return `${previous.getUTCFullYear()}-${String(previous.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
 export function generateMonthlyInsight(input: {
   period: string;
   transactions: Transaction[];

@@ -1,6 +1,8 @@
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
+import type { Database } from "./database.types";
 import { env } from "./env";
 
 export async function createSupabaseServerClient() {
@@ -10,7 +12,7 @@ export async function createSupabaseServerClient() {
 
   const cookieStore = await cookies();
 
-  return createServerClient(
+  return createServerClient<Database>(
     env.NEXT_PUBLIC_SUPABASE_URL,
     env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     {
@@ -30,4 +32,41 @@ export async function createSupabaseServerClient() {
       },
     }
   );
+}
+
+export function createSupabaseServiceClient() {
+  if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
+    return null;
+  }
+
+  return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  });
+}
+
+export async function ensureUserProfile(
+  client: SupabaseClient<Database>,
+  user: { id: string; email?: string | null; user_metadata?: Record<string, unknown> | null }
+) {
+  const metadataName = user.user_metadata?.full_name ?? user.user_metadata?.name;
+  const displayName =
+    typeof metadataName === "string" && metadataName.trim()
+      ? metadataName.trim()
+      : user.email?.split("@")[0] ?? "礼记用户";
+
+  const { error } = await client.from("profiles").upsert(
+    {
+      id: user.id,
+      display_name: displayName,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "id" }
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
 }

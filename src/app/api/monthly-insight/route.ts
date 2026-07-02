@@ -1,25 +1,38 @@
-import { demoEvents, demoTransactions } from "@/lib/liji/sample-data";
-import { generateMonthlyInsight } from "@/lib/liji/insights";
+import { demoEvents, demoTransactions, demoWorkspace } from "@/lib/liji/sample-data";
+import { generateMonthlyInsight, previousMonthPeriod } from "@/lib/liji/insights";
+import { SupabaseWorkspaceRepository } from "@/lib/liji/repository";
+import { createSupabaseServerClient } from "@/lib/liji/supabase-server";
 
-const recurringBills = [
-  {
-    id: "rb-mortgage",
-    title: "房贷",
-    amountCny: 12800,
-    dueDay: 2,
-    accountLabel: "招商银行尾号 8621",
-    reminderLevel: "level_1" as const,
-    enabled: true,
-  },
-];
+export async function GET(request?: Request) {
+  const period = request
+    ? new URL(request.url).searchParams.get("period") ?? previousMonthPeriod()
+    : previousMonthPeriod();
+  const supabase = await createSupabaseServerClient();
+  if (supabase) {
+    const { data } = await supabase.auth.getUser();
+    if (data.user) {
+      const repository = new SupabaseWorkspaceRepository(supabase);
+      const workspace = await repository.getWorkspace(data.user.id);
 
-export async function GET() {
+      return Response.json({
+        insight: generateMonthlyInsight({
+          period,
+          transactions: workspace.transactions,
+          recurringBills: workspace.recurringBills,
+          nextMonthEvents: workspace.events,
+        }),
+        source: "supabase",
+      });
+    }
+  }
+
   return Response.json({
     insight: generateMonthlyInsight({
-      period: "2026-06",
+      period,
       transactions: demoTransactions,
-      recurringBills,
+      recurringBills: demoWorkspace.recurringBills,
       nextMonthEvents: demoEvents,
     }),
+    source: "demo",
   });
 }

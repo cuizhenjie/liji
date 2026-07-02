@@ -28,4 +28,39 @@ describe("failsafe reminders", () => {
     expect(logs.length).toBeGreaterThan(0);
     expect(logs.some((log) => log.channel === "voice")).toBe(true);
   });
+
+  it("does not create logs for stale scheduled events", () => {
+    const logs = runReminderScan(
+      [
+        {
+          id: "e-stale",
+          title: "过期事项",
+          date: "2026-06-01",
+          calendarType: "solar",
+          reminderLevel: "level_1",
+          status: "scheduled",
+          source: "manual",
+        },
+      ],
+      new Date("2026-07-01T09:00:00+08:00")
+    );
+
+    expect(logs).toEqual([]);
+  });
+
+  it("does not create logs for acknowledged events", () => {
+    const logs = runReminderScan([
+      {
+        id: "e-confirmed",
+        title: "已确认事项",
+        date: "2026-07-02",
+        calendarType: "solar",
+        reminderLevel: "level_1",
+        status: "confirmed",
+        source: "manual",
+      },
+    ]);
+
+    expect(logs).toEqual([]);
+  });
 });

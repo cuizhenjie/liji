@@ -1,7 +1,11 @@
 import { z } from "zod";
 
 import { generateFestivalPlan, generateTravelPlan } from "@/lib/liji/budget";
-import { demoContacts, demoEvents } from "@/lib/liji/sample-data";
+import { buildPlanFulfillmentLinks } from "@/lib/liji/fulfillment";
+import { SupabaseWorkspaceRepository } from "@/lib/liji/repository";
+import { demoContacts, demoEvents, demoWorkspace } from "@/lib/liji/sample-data";
+import { createSupabaseServerClient } from "@/lib/liji/supabase-server";
+import type { CalendarEvent, Contact } from "@/lib/liji/types";
 
 const requestSchema = z.object({
   scenario: z.enum(["festival", "travel"]),
@@ -15,27 +19,81 @@ const requestSchema = z.object({
   dailyLimitCny: z.number().optional(),
 });
 
+async function loadPlanContext(): Promise<{
+  events: CalendarEvent[];
+  contacts: Contact[];
+  thirdPartyLinksEnabled: boolean;
+  userId?: string;
+  source: "demo" | "supabase";
+}> {
+  const supabase = await createSupabaseServerClient();
+  if (!supabase) {
+    return {
+      events: demoEvents,
+      contacts: demoContacts,
+      thirdPartyLinksEnabled: demoWorkspace.privacy.thirdPartyLinksEnabled,
+      source: "demo",
+    };
+  }
+
+  const { data } = await supabase.auth.getUser();
+  if (!data.user) {
+    return {
+      events: demoEvents,
+      contacts: demoContacts,
+      thirdPartyLinksEnabled: demoWorkspace.privacy.thirdPartyLinksEnabled,
+      source: "demo",
+    };
+  }
+
+  const repository = new SupabaseWorkspaceRepository(supabase);
+  const workspace = await repository.getWorkspace(data.user.id);
+
+  return {
+    events: workspace.events.length > 0 ? workspace.events : demoEvents,
+    contacts: workspace.contacts.length > 0 ? workspace.contacts : demoContacts,
+    thirdPartyLinksEnabled: workspace.privacy.thirdPartyLinksEnabled,
+    userId: data.user.id,
+    source: "supabase",
+  };
+}
+
 export async function POST(request: Request) {
   const body = requestSchema.parse(await request.json());
+  const context = await loadPlanContext();
+  const now = new Date();
 
   if (body.scenario === "festival") {
-    const event = demoEvents.find((item) => item.id === body.eventId) ?? demoEvents[0];
+    const event = context.events.find((item) => item.id === body.eventId) ?? context.events[0];
     const contact =
-      demoContacts.find((item) => item.id === (body.contactId ?? event.contactId)) ??
-      demoContacts[0];
+      context.contacts.find((item) => item.id === (body.contactId ?? event.contactId)) ??
+      context.contacts[0];
+
+    const plan = generateFestivalPlan(event, contact, body.budgetCny ?? event.budgetCny, now);
 
     return Response.json({
-      plan: generateFestivalPlan(event, contact, body.budgetCny ?? event.budgetCny),
+      plan,
+      fulfillmentLinks: context.thirdPartyLinksEnabled
+        ? buildPlanFulfillmentLinks(plan, context.userId)
+        : [],
+      source: context.source,
     });
   }
 
+  const plan = generateTravelPlan({
+    title: body.title ?? "商务差旅方案",
+    startDate: body.startDate ?? "2026-07-08",
+    endDate: body.endDate ?? "2026-07-10",
+    destination: body.destination ?? "广州",
+    dailyLimitCny: body.dailyLimitCny,
+    now,
+  });
+
   return Response.json({
-    plan: generateTravelPlan({
-      title: body.title ?? "商务差旅方案",
-      startDate: body.startDate ?? "2026-07-08",
-      endDate: body.endDate ?? "2026-07-10",
-      destination: body.destination ?? "广州",
-      dailyLimitCny: body.dailyLimitCny,
-    }),
+    plan,
+    fulfillmentLinks: context.thirdPartyLinksEnabled
+      ? buildPlanFulfillmentLinks(plan, context.userId)
+      : [],
+    source: context.source,
   });
 }
