@@ -6,6 +6,7 @@ import { POST as extractCapture } from "../../src/app/api/capture/extract/route"
 import { POST as processCaptureJobs } from "../../src/app/api/capture/process-jobs/route";
 import { GET as getComplianceRules } from "../../src/app/api/compliance/rules/route";
 import { POST as embedAiMemories } from "../../src/app/api/ai-memories/embed/route";
+import { POST as maintainAiMemories } from "../../src/app/api/ai-memories/maintenance/route";
 import { POST as fulfillmentCallback } from "../../src/app/api/fulfillment/callback/route";
 import { POST as clickFulfillment } from "../../src/app/api/fulfillment/click/route";
 import { POST as generatePlan } from "../../src/app/api/generate-plan/route";
@@ -255,11 +256,17 @@ describe("productization API routes", () => {
       jsonRequest("/api/reminder-escalations/run", { limit: 5 })
     );
     const escalationWorker = await escalationWorkerResponse.json();
+    const maintenanceResponse = await maintainAiMemories(
+      jsonRequest("/api/ai-memories/maintenance", { limitUsers: 5, embedMissing: false })
+    );
+    const maintenance = await maintenanceResponse.json();
 
     expect(compliance.source).toBe("demo");
     expect(compliance.profile.giftLimitCny).toBe(200);
     expect(captureWorker.source).toBe("demo");
     expect(escalationWorker.source).toBe("demo");
+    expect(maintenance.source).toBe("demo");
+    expect(maintenance.processed[0].reviews.length).toBeGreaterThan(0);
   });
 
   it("accepts push subscriptions and fulfillment clicks", async () => {

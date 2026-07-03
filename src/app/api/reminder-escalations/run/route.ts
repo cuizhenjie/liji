@@ -2,8 +2,10 @@ import { z } from "zod";
 
 import { sendAliyunNotifications } from "@/lib/liji/aliyun";
 import { isCronAuthorized, unauthorizedCronResponse } from "@/lib/liji/cron";
+import type { Json } from "@/lib/liji/database.types";
 import { filterNotificationLogsByPrivacy } from "@/lib/liji/notifications";
 import {
+  createEscalationOpsAlert,
   createEscalationDeliveryLogs,
   isEscalationJobDue,
   mergeExternalDeliveryResults,
@@ -66,9 +68,12 @@ function mapJob(row: Record<string, unknown>): ReminderEscalationJobRecord | nul
     channels,
     status,
     triggerAt,
+    nextAttemptAt: text(row, "next_attempt_at"),
     lastSentAt,
     acknowledgedAt: text(row, "acknowledged_at"),
     attemptCount: numberValue(row, "attempt_count"),
+    maxAttempts: numberValue(row, "max_attempts", 3),
+    lastError: text(row, "last_error"),
     providerMessage: text(row, "provider_message"),
   };
 }
@@ -85,6 +90,20 @@ function notificationLogRow(userId: string, log: NotificationLog) {
     sent_at: log.sentAt,
     acknowledged_at: log.acknowledgedAt,
     provider_message: log.providerMessage,
+  };
+}
+
+function opsAlertRow(alert: ReturnType<typeof createEscalationOpsAlert>) {
+  return {
+    user_id: alert.userId,
+    severity: alert.severity,
+    source: alert.source,
+    title: alert.title,
+    message: alert.message,
+    entity_table: alert.entityTable,
+    entity_id: alert.entityId,
+    metadata: alert.metadata as Json,
+    created_at: alert.createdAt,
   };
 }
 
@@ -150,7 +169,14 @@ async function runSupabaseEscalationJobs(limit: number) {
       templateParams: { title: job.title },
     });
     const logs = mergeExternalDeliveryResults(allowedLogs, deliveries);
-    const summary = summarizeEscalationJobStatus({ logs, deliveries });
+    const summary = summarizeEscalationJobStatus({
+      logs,
+      deliveries,
+      attemptCount: job.attemptCount,
+      maxAttempts: job.maxAttempts,
+      now,
+    });
+    const nextAttemptCount = job.attemptCount + 1;
 
     if (logs.length > 0) {
       const { error: insertError } = await client
@@ -165,7 +191,9 @@ async function runSupabaseEscalationJobs(limit: number) {
       .from("reminder_escalation_jobs")
       .update({
         status: summary.status,
-        attempt_count: job.attemptCount + 1,
+        attempt_count: nextAttemptCount,
+        next_attempt_at: "nextAttemptAt" in summary ? summary.nextAttemptAt : null,
+        last_error: summary.status === "failed" || summary.status === "due" ? summary.providerMessage : null,
         provider_message: summary.providerMessage,
         updated_at: now.toISOString(),
       })
@@ -174,12 +202,25 @@ async function runSupabaseEscalationJobs(limit: number) {
       throw new Error(updateError.message);
     }
 
+    if ("exhausted" in summary && summary.exhausted) {
+      const alert = createEscalationOpsAlert({
+        job: { ...job, attemptCount: nextAttemptCount },
+        message: summary.providerMessage,
+        now,
+      });
+      const { error: alertError } = await client.from("ops_alerts").insert(opsAlertRow(alert));
+      if (alertError) {
+        throw new Error(alertError.message);
+      }
+    }
+
     processed.push({
       jobId: job.id,
       status: summary.status,
       channels: logs.map((log) => log.channel),
       deliveries,
       providerMessage: summary.providerMessage,
+      nextAttemptAt: "nextAttemptAt" in summary ? summary.nextAttemptAt : null,
     });
   }
 

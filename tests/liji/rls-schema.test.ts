@@ -18,6 +18,10 @@ const captureWorkerMigration = readFileSync(
   join(process.cwd(), "supabase/migrations/20260703133000_capture_worker_inputs.sql"),
   "utf8"
 );
+const memoryRetryOpsMigration = readFileSync(
+  join(process.cwd(), "supabase/migrations/20260703150000_memory_retry_ops.sql"),
+  "utf8"
+);
 
 describe("Supabase RLS migration", () => {
   it("enables RLS for sensitive user tables", () => {
@@ -71,5 +75,13 @@ describe("Supabase RLS migration", () => {
   it("adds worker input metadata for capture extraction jobs", () => {
     expect(captureWorkerMigration).toContain("add column if not exists input_uri text");
     expect(captureWorkerMigration).toContain("idx_capture_extraction_jobs_provider_status");
+  });
+
+  it("adds retry, ops alert and AI memory review metadata", () => {
+    expect(memoryRetryOpsMigration).toContain("next_attempt_at");
+    expect(memoryRetryOpsMigration).toContain("create table public.ops_alerts");
+    expect(memoryRetryOpsMigration).toContain("alter table public.ops_alerts enable row level security");
+    expect(memoryRetryOpsMigration).toContain("review_status");
+    expect(memoryRetryOpsMigration).toContain("idx_ai_memories_review_status");
   });
 });

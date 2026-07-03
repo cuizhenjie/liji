@@ -91,7 +91,10 @@ export async function POST(request: Request) {
     ) {
       const { error: updateError } = await supabase
         .from("ai_memories")
-        .update({ embedding: embeddingToVectorLiteral(embedding.embedding) })
+        .update({
+          embedding: embeddingToVectorLiteral(embedding.embedding),
+          last_embedded_at: new Date().toISOString(),
+        })
         .eq("user_id", auth.user.id)
         .eq("id", memory.id);
 

@@ -179,7 +179,11 @@ export type AiMemory = {
   source: "manual" | "ai";
   confidence: number;
   embedding?: number[];
+  reviewStatus?: "healthy" | "review_required" | "stale";
+  reviewedAt?: string;
+  lastEmbeddedAt?: string;
   correctedAt?: string;
+  createdAt?: string;
 };
 
 export type PrivacySettings = {

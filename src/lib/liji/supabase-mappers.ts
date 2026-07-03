@@ -301,6 +301,7 @@ export function mapNotificationLog(row: DbRow): NotificationLog {
 
 export function mapAiMemory(row: DbRow): AiMemory {
   const embedding = numberArray(row, "embedding");
+  const reviewStatus = text(row, "review_status", "healthy");
   return {
     id: text(row, "id"),
     contactId: optionalText(row, "contact_id"),
@@ -308,7 +309,14 @@ export function mapAiMemory(row: DbRow): AiMemory {
     source: text(row, "source", "ai") === "manual" ? "manual" : "ai",
     confidence: numberValue(row, "confidence", 0.5),
     embedding: embedding.length > 0 ? embedding : undefined,
+    reviewStatus:
+      reviewStatus === "review_required" || reviewStatus === "stale"
+        ? reviewStatus
+        : "healthy",
+    reviewedAt: optionalText(row, "reviewed_at"),
+    lastEmbeddedAt: optionalText(row, "last_embedded_at"),
     correctedAt: optionalText(row, "corrected_at"),
+    createdAt: optionalText(row, "created_at"),
   };
 }
 

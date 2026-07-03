@@ -12,9 +12,12 @@ export type ReminderEscalationJobRecord = {
   channels: Array<"sms" | "voice">;
   status: "scheduled" | "due" | "sent" | "cancelled" | "failed";
   triggerAt: string;
+  nextAttemptAt?: string;
   lastSentAt: string;
   acknowledgedAt?: string;
   attemptCount: number;
+  maxAttempts: number;
+  lastError?: string;
   providerMessage?: string;
 };
 
@@ -23,7 +26,8 @@ export function isEscalationJobDue(job: ReminderEscalationJobRecord, now = new D
     return false;
   }
 
-  return !isBefore(now, parseISO(job.triggerAt));
+  const threshold = job.nextAttemptAt ?? job.triggerAt;
+  return !isBefore(now, parseISO(threshold));
 }
 
 export function createEscalationDeliveryLogs(
@@ -63,6 +67,9 @@ export function mergeExternalDeliveryResults(
 export function summarizeEscalationJobStatus(params: {
   logs: NotificationLog[];
   deliveries: AliyunDeliveryResult[];
+  attemptCount?: number;
+  maxAttempts?: number;
+  now?: Date;
 }) {
   if (params.logs.length === 0) {
     return {
@@ -86,8 +93,61 @@ export function summarizeEscalationJobStatus(params: {
   }
 
   const failure = params.deliveries.find((item) => item.status !== "sent");
+  const nextAttempt = planEscalationRetry({
+    attemptCount: params.attemptCount ?? 0,
+    maxAttempts: params.maxAttempts ?? 3,
+    now: params.now,
+  });
+
   return {
-    status: "failed" as const,
+    status: nextAttempt.exhausted ? "failed" as const : "due" as const,
     providerMessage: failure?.providerMessage ?? "短信或语音升级失败。",
+    nextAttemptAt: nextAttempt.nextAttemptAt,
+    exhausted: nextAttempt.exhausted,
+  };
+}
+
+export function planEscalationRetry(params: {
+  attemptCount: number;
+  maxAttempts: number;
+  now?: Date;
+}) {
+  const now = params.now ?? new Date();
+  const nextAttemptNumber = params.attemptCount + 1;
+  if (nextAttemptNumber >= params.maxAttempts) {
+    return {
+      exhausted: true,
+      nextAttemptAt: undefined,
+      delayMinutes: 0,
+    };
+  }
+
+  const delayMinutes = Math.min(30, 5 * 2 ** Math.max(0, params.attemptCount));
+  return {
+    exhausted: false,
+    delayMinutes,
+    nextAttemptAt: new Date(now.getTime() + delayMinutes * 60_000).toISOString(),
+  };
+}
+
+export function createEscalationOpsAlert(params: {
+  job: ReminderEscalationJobRecord;
+  message: string;
+  now?: Date;
+}) {
+  return {
+    userId: params.job.userId,
+    severity: "critical" as const,
+    source: "reminder_escalation",
+    title: `Level 1 升级失败：${params.job.title}`,
+    message: params.message,
+    entityTable: "reminder_escalation_jobs",
+    entityId: params.job.id,
+    metadata: {
+      eventId: params.job.eventId,
+      attemptCount: params.job.attemptCount,
+      maxAttempts: params.job.maxAttempts,
+    },
+    createdAt: (params.now ?? new Date()).toISOString(),
   };
 }

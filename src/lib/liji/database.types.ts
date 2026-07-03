@@ -176,6 +176,9 @@ export type Database = {
         confidence: number;
         embedding: string | null;
         corrected_at: string | null;
+        review_status: "healthy" | "review_required" | "stale";
+        reviewed_at: string | null;
+        last_embedded_at: string | null;
         created_at: string;
       }>;
       privacy_settings: Table<{
@@ -274,12 +277,30 @@ export type Database = {
         channels: string[];
         status: "scheduled" | "due" | "sent" | "cancelled" | "failed";
         trigger_at: string;
+        next_attempt_at: string | null;
         last_sent_at: string;
         acknowledged_at: string | null;
         attempt_count: number;
+        max_attempts: number;
+        last_error: string | null;
         provider_message: string;
         created_at: string;
         updated_at: string;
+      }>;
+      ops_alerts: Table<{
+        id: string;
+        user_id: string | null;
+        severity: "info" | "warning" | "critical";
+        source: string;
+        title: string;
+        message: string;
+        entity_table: string | null;
+        entity_id: string | null;
+        status: "open" | "acknowledged" | "resolved";
+        metadata: Json;
+        created_at: string;
+        acknowledged_at: string | null;
+        resolved_at: string | null;
       }>;
     };
     Views: Record<string, never>;

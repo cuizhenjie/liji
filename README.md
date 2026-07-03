@@ -50,12 +50,13 @@ npx playwright install chromium webkit
 - 真实服务前置：AI 记忆支持 OpenAI embedding 生成与 pgvector RPC 召回，附件型采集可进入 OCR/ASR job 队列，Level 1 可生成 15 分钟升级 job。
 - 后台 worker：`/api/capture/process-jobs` 可消费 OCR/ASR 队列并回写确认中心，`/api/reminder-escalations/run` 可消费 Level 1 升级队列并写入投递日志。
 - 动态合规：`/api/compliance/rules` 可返回系统/用户合规规则，并按联系人标签合成更严格的礼品和宴请限额。
+- 运维闭环：Level 1 升级任务支持失败退避、最大尝试次数和 `ops_alerts` 告警；`/api/ai-memories/maintenance` 支持 AI 记忆衰减、过期复核和批量补 embedding。
 
 ## 下一批待接真实服务
 
 - 接入真实 OCR/ASR provider endpoint，并完善附件上传到对象存储后的 `input_uri` 生成。
-- 补充 AI 记忆纠偏衰减、过期提醒和批量重嵌入任务。
-- 为 `reminder_escalation_jobs` 增加短信/语音真实回执轮询、失败重试策略和运维告警。
+- 补充 AI 记忆用户复核 UI 和复核后自动清理 `ops_alerts`。
+- 为短信/语音增加真实回执轮询和 provider request id 对账。
 - 接入电商/本地生活/商旅真实联盟 API 与 CPS 结算后台。
 
 ## 环境变量

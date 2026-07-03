@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createEscalationOpsAlert,
   createEscalationDeliveryLogs,
   isEscalationJobDue,
   mergeExternalDeliveryResults,
+  planEscalationRetry,
   summarizeEscalationJobStatus,
 } from "../../src/lib/liji/reminder-escalation-worker";
 
@@ -17,6 +19,7 @@ const job = {
   triggerAt: "2026-07-01T09:15:00+08:00",
   lastSentAt: "2026-07-01T09:00:00+08:00",
   attemptCount: 0,
+  maxAttempts: 3,
 };
 
 describe("reminder escalation worker", () => {
@@ -43,6 +46,29 @@ describe("reminder escalation worker", () => {
     expect(summarizeEscalationJobStatus({ logs: merged, deliveries: [
       { channel: "sms", status: "sent", providerMessage: "SMS sent" },
       { channel: "voice", status: "failed", providerMessage: "Voice failed" },
-    ] }).status).toBe("failed");
+    ] }).status).toBe("due");
+  });
+
+  it("plans retry backoff and creates ops alerts when exhausted", () => {
+    const retry = planEscalationRetry({
+      attemptCount: 1,
+      maxAttempts: 3,
+      now: new Date("2026-07-01T09:15:00+08:00"),
+    });
+    const exhausted = planEscalationRetry({
+      attemptCount: 2,
+      maxAttempts: 3,
+      now: new Date("2026-07-01T09:15:00+08:00"),
+    });
+    const alert = createEscalationOpsAlert({
+      job: { ...job, attemptCount: 3 },
+      message: "voice failed",
+      now: new Date("2026-07-01T09:15:00+08:00"),
+    });
+
+    expect(retry.exhausted).toBe(false);
+    expect(retry.nextAttemptAt).toBe("2026-07-01T01:25:00.000Z");
+    expect(exhausted.exhausted).toBe(true);
+    expect(alert.severity).toBe("critical");
   });
 });
