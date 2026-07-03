@@ -15,7 +15,13 @@ export type CaptureExtractionJobRecord = {
   mimeType?: string;
   inputUri?: string;
   contentHash: string;
+  providerRequestId?: string;
   queuedAt?: string;
+  callbackReceivedAt?: string;
+  attemptCount: number;
+  maxAttempts: number;
+  nextAttemptAt?: string;
+  lastError?: string;
 };
 
 export type CaptureWorkerResult = {

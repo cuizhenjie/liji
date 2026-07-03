@@ -13,6 +13,8 @@ const job = {
   mimeType: "image/png",
   inputUri: "https://storage.example.test/receipt.png",
   contentHash: "hash",
+  attemptCount: 0,
+  maxAttempts: 3,
 };
 
 describe("capture extraction worker", () => {

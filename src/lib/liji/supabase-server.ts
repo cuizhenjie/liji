@@ -5,6 +5,8 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./database.types";
 import { env } from "./env";
 
+export type SupabaseServiceClient = SupabaseClient<Database>;
+
 export async function createSupabaseServerClient() {
   if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
     return null;

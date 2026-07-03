@@ -1,111 +1,22 @@
 import { z } from "zod";
 
-import { parseInputWithProvider } from "@/lib/liji/ai";
-import type { Json } from "@/lib/liji/database.types";
+import { processCaptureExtractionJob } from "@/lib/liji/capture-worker";
 import {
-  processCaptureExtractionJob,
-  type CaptureExtractionJobRecord,
-} from "@/lib/liji/capture-worker";
+  captureJobUpdatePayload,
+  createCaptureExtractionOpsAlert,
+  isCaptureExtractionJobDue,
+  loadContactsForCaptureJob,
+  mapCaptureExtractionJobRow,
+  planCaptureExtractionRetry,
+  upsertCaptureFromExtractedText,
+} from "@/lib/liji/capture-jobs";
 import { isCronAuthorized, unauthorizedCronResponse } from "@/lib/liji/cron";
+import { opsAlertRow } from "@/lib/liji/ops-alerts";
 import { createSupabaseServiceClient } from "@/lib/liji/supabase-server";
-import { mapContact } from "@/lib/liji/supabase-mappers";
-import type { CaptureItem, Contact } from "@/lib/liji/types";
 
 const requestSchema = z.object({
   limit: z.number().int().min(1).max(50).default(10),
 });
-
-function text(row: Record<string, unknown>, key: string) {
-  const value = row[key];
-  return typeof value === "string" ? value : undefined;
-}
-
-function mapJob(row: Record<string, unknown>): CaptureExtractionJobRecord | null {
-  const id = text(row, "id");
-  const userId = text(row, "user_id");
-  const sourceType = text(row, "source_type");
-  const jobType = text(row, "job_type");
-  const provider = text(row, "provider");
-  const status = text(row, "status");
-  const contentHash = text(row, "content_hash");
-
-  if (
-    !id ||
-    !userId ||
-    !provider ||
-    !contentHash ||
-    !(sourceType === "voice" || sourceType === "screenshot" || sourceType === "chat" || sourceType === "bill") ||
-    !(jobType === "ocr" || jobType === "asr") ||
-    !(status === "queued" || status === "processing" || status === "completed" || status === "failed" || status === "cancelled")
-  ) {
-    return null;
-  }
-
-  return {
-    id,
-    userId,
-    captureId: text(row, "capture_id"),
-    sourceType,
-    jobType,
-    provider,
-    status,
-    fileName: text(row, "file_name"),
-    mimeType: text(row, "mime_type"),
-    inputUri: text(row, "input_uri"),
-    contentHash,
-    queuedAt: text(row, "queued_at"),
-  };
-}
-
-function captureRow(userId: string, capture: CaptureItem) {
-  return {
-    id: capture.id,
-    user_id: userId,
-    raw_text: capture.rawText,
-    masked_text: capture.maskedText,
-    source_type: capture.sourceType,
-    status: capture.status,
-    parsed: capture.parsed,
-    pii_tokens: capture.piiTokens,
-    created_at: capture.createdAt,
-  };
-}
-
-async function loadContacts(userId: string, client: NonNullable<ReturnType<typeof createSupabaseServiceClient>>) {
-  const { data, error } = await client.from("contacts").select("*").eq("user_id", userId);
-  if (error) {
-    throw new Error(error.message);
-  }
-  return (data ?? []).map((row) => mapContact(row as Record<string, unknown>));
-}
-
-async function upsertCaptureFromExtractedText(params: {
-  client: NonNullable<ReturnType<typeof createSupabaseServiceClient>>;
-  job: CaptureExtractionJobRecord;
-  contacts: Contact[];
-  extractedText: string;
-}) {
-  const parsed = await parseInputWithProvider({
-    text: params.extractedText,
-    contacts: params.contacts,
-    source: params.job.sourceType,
-    allowCloudModel: false,
-    now: new Date(),
-  });
-  const capture = {
-    ...parsed.capture,
-    id: params.job.captureId ?? parsed.capture.id,
-  };
-
-  const { error } = await params.client
-    .from("capture_items")
-    .upsert(captureRow(params.job.userId, capture));
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return capture;
-}
 
 async function runSupabaseCaptureJobs(limit: number) {
   const client = createSupabaseServiceClient();
@@ -116,31 +27,47 @@ async function runSupabaseCaptureJobs(limit: number) {
   const { data, error } = await client
     .from("capture_extraction_jobs")
     .select("*")
-    .eq("status", "queued")
+    .in("status", ["queued", "failed"])
     .order("queued_at", { ascending: true })
-    .limit(limit);
+    .limit(limit * 2);
 
   if (error) {
     throw new Error(error.message);
   }
 
   const processed = [];
+  const now = new Date();
   for (const row of data ?? []) {
-    const job = mapJob(row as Record<string, unknown>);
-    if (!job) {
+    const job = mapCaptureExtractionJobRow(row as Record<string, unknown>);
+    if (!job || !isCaptureExtractionJobDue(job, now)) {
       continue;
     }
 
-    await client
+    if (processed.length >= limit) {
+      break;
+    }
+
+    const attemptCount = job.attemptCount + 1;
+    const { error: processingError } = await client
       .from("capture_extraction_jobs")
-      .update({ status: "processing" })
+      .update({
+        status: "processing",
+        attempt_count: attemptCount,
+        last_error: null,
+      })
       .eq("id", job.id);
+    if (processingError) {
+      throw new Error(processingError.message);
+    }
 
     const result = await processCaptureExtractionJob({ job });
+    const finalAttemptCount = result.status === "waiting_provider"
+      ? job.attemptCount
+      : attemptCount;
     let captureId = job.captureId;
 
     if (result.status === "completed" && result.extractedText) {
-      const contacts = await loadContacts(job.userId, client);
+      const contacts = await loadContactsForCaptureJob(client, job.userId);
       const capture = await upsertCaptureFromExtractedText({
         client,
         job,
@@ -150,23 +77,45 @@ async function runSupabaseCaptureJobs(limit: number) {
       captureId = capture.id;
     }
 
+    const retry = result.status === "failed"
+      ? planCaptureExtractionRetry({ attemptCount: finalAttemptCount, maxAttempts: job.maxAttempts, now })
+      : null;
     const { error: updateError } = await client
       .from("capture_extraction_jobs")
-      .update({
-        capture_id: captureId,
-        status: result.status === "completed" ? "completed" : result.status === "failed" ? "failed" : "queued",
-        extracted_text: result.extractedText,
-        error_message: result.errorMessage,
-        raw_result: result.rawResult as Json,
-        completed_at: result.status === "completed" || result.status === "failed" ? new Date().toISOString() : null,
-      })
+      .update(captureJobUpdatePayload({
+        job,
+        result,
+        captureId,
+        attemptCount: finalAttemptCount,
+        nextAttemptAt: retry?.nextAttemptAt,
+        exhausted: retry?.exhausted,
+        now,
+      }))
       .eq("id", job.id);
 
     if (updateError) {
       throw new Error(updateError.message);
     }
 
-    processed.push({ ...result, captureId });
+    if (retry?.exhausted) {
+      const alert = createCaptureExtractionOpsAlert({
+        job: { ...job, attemptCount: finalAttemptCount },
+        message: result.errorMessage ?? "OCR/ASR 抽取失败且已耗尽重试次数。",
+        now,
+      });
+      const { error: alertError } = await client.from("ops_alerts").insert(opsAlertRow(alert));
+      if (alertError && alertError.code !== "23505") {
+        throw new Error(alertError.message);
+      }
+    }
+
+    processed.push({
+      ...result,
+      captureId,
+      attemptCount: finalAttemptCount,
+      nextAttemptAt: retry?.nextAttemptAt,
+      exhausted: retry?.exhausted ?? false,
+    });
   }
 
   return processed;

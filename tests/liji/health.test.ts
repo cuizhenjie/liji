@@ -22,9 +22,11 @@ describe("production readiness health", () => {
       VAPID_PRIVATE_KEY: "private",
       VAPID_SUBJECT: "mailto:ops@example.com",
       LIJI_ENABLE_EXTERNAL_NOTIFICATIONS: "true",
+      LIJI_CAPTURE_PROVIDER_CALLBACK_SECRET: "capture-callback",
       FULFILLMENT_CALLBACK_SECRET: "callback-secret",
     });
 
     expect(summarizeReadiness(checks).productionReady).toBe(true);
+    expect(checks.find((item) => item.id === "capture-provider-callback")?.status).toBe("pass");
   });
 });

@@ -36,6 +36,7 @@ export function getReadinessChecks(
   const hasAliyunVoice = hasAliyunBase && has(env.ALIYUN_VOICE_CALLED_SHOW_NUMBER, env.ALIYUN_VOICE_TTS_CODE, env.LIJI_DEFAULT_NOTIFY_PHONE);
   const externalNotificationsEnabled = env.LIJI_ENABLE_EXTERNAL_NOTIFICATIONS === "true";
   const hasNotificationReceiptPush = hasSupabaseService && has(env.LIJI_NOTIFICATION_RECEIPT_CALLBACK_SECRET);
+  const hasCaptureCallback = hasSupabaseService && has(env.LIJI_CAPTURE_PROVIDER_CALLBACK_SECRET);
   const hasAnyCpsProvider = [
     env.JD_UNION_ID,
     env.TAOBAO_PID,
@@ -113,6 +114,17 @@ export function getReadinessChecks(
       ok: has(env.LIJI_CAPTURE_PROVIDER_ENDPOINT),
       warn: true,
       detail: env.LIJI_CAPTURE_PROVIDER_ENDPOINT ? "采集抽取 worker 可调用外部 provider。" : "未配置 LIJI_CAPTURE_PROVIDER_ENDPOINT，抽取 job 会停留在队列中。",
+    }),
+    check({
+      id: "capture-provider-callback",
+      label: "OCR/ASR Provider 回调",
+      category: "ai",
+      requiredForProduction: false,
+      ok: hasCaptureCallback,
+      warn: true,
+      detail: hasCaptureCallback
+        ? "OCR/ASR provider 回调可验签、回写抽取结果并触发重试/告警。"
+        : "未配置回调密钥或 Supabase service role，provider 异步回调只能 demo 接收。",
     }),
     check({
       id: "capture-storage",

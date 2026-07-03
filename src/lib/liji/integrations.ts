@@ -9,6 +9,7 @@ export type IntegrationStatus = {
     | "aliyun_receipts"
     | "aliyun_ocr"
     | "aliyun_asr"
+    | "capture_provider_callback"
     | "jd"
     | "taobao"
     | "meituan"
@@ -44,6 +45,9 @@ export function getIntegrationStatuses(
   );
   const hasAliyunReceipts = Boolean(
     env.SUPABASE_SERVICE_ROLE_KEY && env.LIJI_NOTIFICATION_RECEIPT_CALLBACK_SECRET
+  );
+  const hasCaptureProviderCallback = Boolean(
+    env.SUPABASE_SERVICE_ROLE_KEY && env.LIJI_CAPTURE_PROVIDER_CALLBACK_SECRET
   );
 
   return [
@@ -120,6 +124,15 @@ export function getIntegrationStatuses(
       category: "ai",
       mode: env.LIJI_CAPTURE_ASR_PROVIDER && env.LIJI_CAPTURE_PROVIDER_ENDPOINT && env.SUPABASE_SERVICE_ROLE_KEY ? "configured" : "missing",
       detail: env.LIJI_CAPTURE_ASR_PROVIDER && env.LIJI_CAPTURE_PROVIDER_ENDPOINT && env.SUPABASE_SERVICE_ROLE_KEY ? "语音附件会上传对象存储，进入 ASR worker 并回写确认中心。" : "语音附件仍需对象存储、provider endpoint 或人工补文本。",
+    },
+    {
+      provider: "capture_provider_callback",
+      label: "OCR/ASR 回调验签",
+      category: "ai",
+      mode: hasCaptureProviderCallback ? "configured" : "missing",
+      detail: hasCaptureProviderCallback
+        ? "Provider 异步回调可验签、回写确认中心并触发失败重试。"
+        : "未配置回调密钥或服务端落库权限，provider 回调只能 demo 接收。",
     },
     {
       provider: "jd",

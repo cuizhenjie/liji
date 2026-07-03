@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DELETE as deleteContact, POST as saveContact } from "../../src/app/api/contacts/route";
 import { GET as authCallback } from "../../src/app/auth/callback/route";
 import { POST as extractCapture } from "../../src/app/api/capture/extract/route";
+import { POST as captureProviderCallback } from "../../src/app/api/capture/provider-callback/route";
 import { POST as processCaptureJobs } from "../../src/app/api/capture/process-jobs/route";
 import { GET as getComplianceRules } from "../../src/app/api/compliance/rules/route";
 import { POST as embedAiMemories } from "../../src/app/api/ai-memories/embed/route";
@@ -286,6 +287,23 @@ describe("productization API routes", () => {
     expect(payload.extraction.provider).toBe("queued-provider");
     expect(payload.extraction.job.provider).toBe("aliyun-ocr");
     expect(payload.persistedJob).toBe(false);
+  });
+
+  it("accepts capture provider callbacks in demo mode", async () => {
+    const response = await captureProviderCallback(
+      jsonRequest("/api/capture/provider-callback", {
+        jobId: "capjob-1",
+        status: "completed",
+        extractedText: "周明下次宴请不吃香菜",
+        confidence: 0.9,
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload.source).toBe("demo");
+    expect(payload.persisted).toBe(false);
+    expect(payload.callback.jobId).toBe("capjob-1");
+    expect(payload.callback.status).toBe("completed");
   });
 
   it("serves compliance rules and demo workers without Supabase", async () => {

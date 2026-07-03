@@ -38,6 +38,10 @@ const notificationPhoneRoutingMigration = readFileSync(
   join(process.cwd(), "supabase/migrations/20260703202000_notification_phone_routing.sql"),
   "utf8"
 );
+const captureProviderCallbacksMigration = readFileSync(
+  join(process.cwd(), "supabase/migrations/20260703212000_capture_provider_callbacks.sql"),
+  "utf8"
+);
 
 describe("Supabase RLS migration", () => {
   it("enables RLS for sensitive user tables", () => {
@@ -125,5 +129,14 @@ describe("Supabase RLS migration", () => {
     expect(notificationPhoneRoutingMigration).toContain("alter table public.privacy_settings");
     expect(notificationPhoneRoutingMigration).toContain("add column if not exists notification_phone text");
     expect(notificationPhoneRoutingMigration).toContain("privacy_settings_notification_phone_length");
+  });
+
+  it("adds capture provider callback and retry metadata", () => {
+    expect(captureProviderCallbacksMigration).toContain("provider_request_id text");
+    expect(captureProviderCallbacksMigration).toContain("callback_received_at timestamptz");
+    expect(captureProviderCallbacksMigration).toContain("attempt_count int not null default 0");
+    expect(captureProviderCallbacksMigration).toContain("max_attempts int not null default 3");
+    expect(captureProviderCallbacksMigration).toContain("idx_capture_extraction_jobs_retry");
+    expect(captureProviderCallbacksMigration).toContain("idx_capture_extraction_jobs_provider_request");
   });
 });

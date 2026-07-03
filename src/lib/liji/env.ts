@@ -17,6 +17,7 @@ const envSchema = z.object({
   LIJI_CAPTURE_OCR_PROVIDER: z.string().min(1).optional(),
   LIJI_CAPTURE_ASR_PROVIDER: z.string().min(1).optional(),
   LIJI_CAPTURE_PROVIDER_ENDPOINT: z.string().url().optional(),
+  LIJI_CAPTURE_PROVIDER_CALLBACK_SECRET: z.string().min(1).optional(),
   LIJI_CAPTURE_STORAGE_BUCKET: z.string().min(1).optional(),
   LIJI_CAPTURE_STORAGE_SIGNED_URL_TTL_SECONDS: z.string().min(1).optional(),
   ALIYUN_ACCESS_KEY_ID: z.string().min(1).optional(),

@@ -273,7 +273,13 @@ export type Database = {
         extracted_text: string | null;
         error_message: string | null;
         raw_result: Json;
+        provider_request_id: string | null;
         queued_at: string;
+        callback_received_at: string | null;
+        attempt_count: number;
+        max_attempts: number;
+        next_attempt_at: string | null;
+        last_error: string | null;
         completed_at: string | null;
       }>;
       reminder_escalation_jobs: Table<{
