@@ -46,6 +46,15 @@ npx playwright install chromium webkit
 - 冗余提醒：Level 1 事件可在右侧护航栏确认已阅，确认后停止升级并写入投递日志；通知 provider 可从 mock 替换为阿里云适配。
 - 隐私授权：开关和演示数据可本地保存，支持导出数据、一键重置和本地删除。
 - 产品化基础：新增 AI 结构化解析适配器、通知 provider、履约追踪链接、隐私导出/脱敏、Workspace Repository 和 `/api/workspace/sync` 云端同步入口。
+- 生产化推进：`/api/health` 暴露上线 readiness 检查，`/api/capture/extract` 支持语音/OCR/聊天/账单文本标准化，`/api/ai-memories/search` 提供 AI 记忆召回骨架。
+- 真实服务前置：AI 记忆支持 OpenAI embedding 生成与 pgvector RPC 召回，附件型采集可进入 OCR/ASR job 队列，Level 1 可生成 15 分钟升级 job。
+
+## 下一批待接真实服务
+
+- 实现 OCR/ASR job worker，对接阿里云或其他 provider，回写 `capture_extraction_jobs.extracted_text` 并进入确认中心。
+- 将 AI 记忆 embedding 生成接入采集确认流程，并补充纠偏衰减、过期提醒和批量重嵌入任务。
+- 让 `reminder_escalation_jobs` 接入延迟队列、短信/语音真实回执、失败重试和运维告警。
+- 接入电商/本地生活/商旅真实联盟 API 与 CPS 结算后台。
 
 ## 环境变量
 
@@ -60,9 +69,13 @@ VAPID_SUBJECT=
 SUPABASE_SERVICE_ROLE_KEY=
 OPENAI_API_KEY=
 OPENAI_MODEL=
+OPENAI_EMBEDDING_MODEL=
+OPENAI_EMBEDDING_DIMENSIONS=
 CRON_SECRET=
 LIJI_DEFAULT_NOTIFY_PHONE=
 LIJI_ENABLE_EXTERNAL_NOTIFICATIONS=
+LIJI_CAPTURE_OCR_PROVIDER=
+LIJI_CAPTURE_ASR_PROVIDER=
 ALIYUN_ACCESS_KEY_ID=
 ALIYUN_ACCESS_KEY_SECRET=
 ALIYUN_REGION_ID=
@@ -89,3 +102,9 @@ Supabase migration 位于 `supabase/migrations/20260701193000_initial_liji_schem
 - `web_push_subscriptions`、`integration_accounts`
 - `fulfillment_clicks`、`monthly_reports`、`audit_logs`
 - 采集来源字段、常用查询索引和 RLS 策略
+
+真实服务前置 migration 位于 `supabase/migrations/20260703120000_real_service_readiness.sql`，包含：
+
+- `capture_extraction_jobs`、`reminder_escalation_jobs`
+- AI 记忆向量索引 `idx_ai_memories_embedding_cosine`
+- pgvector 召回函数 `match_ai_memories`

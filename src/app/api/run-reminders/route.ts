@@ -1,6 +1,10 @@
 import { isCronAuthorized, unauthorizedCronResponse } from "@/lib/liji/cron";
 import { filterNotificationLogsByPrivacy } from "@/lib/liji/notifications";
-import { runReminderScan } from "@/lib/liji/reminders";
+import {
+  createEscalationJobsFromLogs,
+  runReminderScan,
+  type ReminderEscalationJob,
+} from "@/lib/liji/reminders";
 import { demoEvents } from "@/lib/liji/sample-data";
 import { createSupabaseServiceClient } from "@/lib/liji/supabase-server";
 import { mapEvent, mapPrivacy } from "@/lib/liji/supabase-mappers";
@@ -19,6 +23,22 @@ function notificationLogRow(userId: string, log: NotificationLog) {
     sent_at: log.sentAt,
     acknowledged_at: log.acknowledgedAt,
     provider_message: log.providerMessage,
+  };
+}
+
+function escalationJobRow(userId: string, job: ReminderEscalationJob) {
+  return {
+    id: job.id,
+    user_id: userId,
+    event_id: job.eventId,
+    title: job.title,
+    channels: job.channels,
+    status: job.status,
+    trigger_at: job.triggerAt,
+    last_sent_at: job.lastSentAt,
+    acknowledged_at: job.acknowledgedAt,
+    attempt_count: job.attemptCount,
+    provider_message: job.providerMessage,
   };
 }
 
@@ -61,6 +81,7 @@ async function runSupabaseReminderScan() {
   }
 
   const logsWithUsers = [];
+  const jobsWithUsers = [];
   for (const row of data ?? []) {
     const userId = typeof row.user_id === "string" ? row.user_id : "";
     if (!userId) {
@@ -70,6 +91,7 @@ async function runSupabaseReminderScan() {
     const privacy = await privacyForUser(userId);
     const logs = filterNotificationLogsByPrivacy(runReminderScan([mapEvent(row)], now), privacy);
     logsWithUsers.push(...logs.map((log) => ({ userId, log })));
+    jobsWithUsers.push(...createEscalationJobsFromLogs({ logs, now }).map((job) => ({ userId, job })));
   }
 
   if (logsWithUsers.length > 0) {
@@ -82,7 +104,23 @@ async function runSupabaseReminderScan() {
     }
   }
 
-  return logsWithUsers.map(({ log }) => log);
+  if (jobsWithUsers.length > 0) {
+    const { error: jobsError } = await supabase
+      .from("reminder_escalation_jobs")
+      .upsert(jobsWithUsers.map(({ userId, job }) => escalationJobRow(userId, job)), {
+        onConflict: "user_id,event_id,trigger_at",
+        ignoreDuplicates: true,
+      });
+
+    if (jobsError) {
+      throw new Error(jobsError.message);
+    }
+  }
+
+  return {
+    logs: logsWithUsers.map(({ log }) => log),
+    escalationJobs: jobsWithUsers.map(({ job }) => job),
+  };
 }
 
 export async function GET(request: Request) {
@@ -93,13 +131,16 @@ export async function GET(request: Request) {
   const supabaseLogs = await runSupabaseReminderScan();
   if (supabaseLogs) {
     return Response.json({
-      logs: supabaseLogs,
+      logs: supabaseLogs.logs,
+      escalationJobs: supabaseLogs.escalationJobs,
       source: "supabase",
     });
   }
+  const logs = runReminderScan(demoEvents, new Date());
 
   return Response.json({
-    logs: runReminderScan(demoEvents, new Date()),
+    logs,
+    escalationJobs: createEscalationJobsFromLogs({ logs, now: new Date() }),
     source: "demo",
   });
 }
@@ -112,13 +153,16 @@ export async function POST(request: Request) {
   const supabaseLogs = await runSupabaseReminderScan();
   if (supabaseLogs) {
     return Response.json({
-      logs: supabaseLogs,
+      logs: supabaseLogs.logs,
+      escalationJobs: supabaseLogs.escalationJobs,
       source: "supabase",
     });
   }
+  const logs = runReminderScan(demoEvents, new Date());
 
   return Response.json({
-    logs: runReminderScan(demoEvents, new Date()),
+    logs,
+    escalationJobs: createEscalationJobsFromLogs({ logs, now: new Date() }),
     source: "demo",
   });
 }

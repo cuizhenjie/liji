@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   channelsForLevel,
+  createEscalationJobsFromLogs,
+  createLevelOneEscalationJob,
+  planLevelOneEscalation,
   runReminderScan,
   shouldEscalateLevelOne,
 } from "../../src/lib/liji/reminders";
@@ -23,10 +26,50 @@ describe("failsafe reminders", () => {
     ).toBe(true);
   });
 
+  it("plans level one escalation windows", () => {
+    const waiting = planLevelOneEscalation({
+      level: "level_1",
+      lastSentAt: "2026-07-01T09:00:00+08:00",
+      now: new Date("2026-07-01T09:10:00+08:00"),
+    });
+    const due = planLevelOneEscalation({
+      level: "level_1",
+      lastSentAt: "2026-07-01T09:00:00+08:00",
+      now: new Date("2026-07-01T09:16:00+08:00"),
+    });
+
+    expect(waiting.status).toBe("waiting_ack");
+    expect(due.status).toBe("due");
+    expect(due.channels).toEqual(["sms", "voice"]);
+  });
+
   it("creates notification logs for upcoming events", () => {
     const logs = runReminderScan(demoEvents);
     expect(logs.length).toBeGreaterThan(0);
     expect(logs.some((log) => log.channel === "voice")).toBe(true);
+  });
+
+  it("creates level one escalation jobs from first push logs", () => {
+    const logs = runReminderScan(demoEvents, new Date("2026-07-01T09:00:00+08:00"));
+    const jobs = createEscalationJobsFromLogs({
+      logs,
+      now: new Date("2026-07-01T09:01:00+08:00"),
+    });
+
+    expect(jobs.length).toBeGreaterThan(0);
+    expect(jobs[0].channels).toEqual(["sms", "voice"]);
+    expect(jobs[0].status).toBe("scheduled");
+  });
+
+  it("marks level one escalation job due after the confirmation window", () => {
+    const job = createLevelOneEscalationJob({
+      title: "客户宴请",
+      level: "level_1",
+      lastSentAt: "2026-07-01T09:00:00+08:00",
+      now: new Date("2026-07-01T09:20:00+08:00"),
+    });
+
+    expect(job?.status).toBe("due");
   });
 
   it("does not create logs for stale scheduled events", () => {

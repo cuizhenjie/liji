@@ -248,9 +248,58 @@ export type Database = {
         raw_payload: Json;
         received_at: string;
       }>;
+      capture_extraction_jobs: Table<{
+        id: string;
+        user_id: string;
+        capture_id: string | null;
+        source_type: "voice" | "screenshot" | "chat" | "bill";
+        job_type: "ocr" | "asr";
+        provider: string;
+        status: "queued" | "processing" | "completed" | "failed" | "cancelled";
+        file_name: string | null;
+        mime_type: string | null;
+        content_hash: string;
+        extracted_text: string | null;
+        error_message: string | null;
+        raw_result: Json;
+        queued_at: string;
+        completed_at: string | null;
+      }>;
+      reminder_escalation_jobs: Table<{
+        id: string;
+        user_id: string;
+        event_id: string | null;
+        title: string;
+        channels: string[];
+        status: "scheduled" | "due" | "sent" | "cancelled" | "failed";
+        trigger_at: string;
+        last_sent_at: string;
+        acknowledged_at: string | null;
+        attempt_count: number;
+        provider_message: string;
+        created_at: string;
+        updated_at: string;
+      }>;
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      match_ai_memories: {
+        Args: {
+          query_embedding: string;
+          match_count?: number;
+        };
+        Returns: Array<{
+          id: string;
+          contact_id: string | null;
+          content: string;
+          source: "manual" | "ai";
+          confidence: number;
+          corrected_at: string | null;
+          embedding: string | null;
+          similarity: number;
+        }>;
+      };
+    };
     Enums: {
       calendar_type: "solar" | "lunar";
       reminder_level: "level_1" | "level_2" | "level_3";
@@ -258,7 +307,17 @@ export type Database = {
       plan_scenario: "festival" | "travel";
       plan_status: "draft" | "pending_confirmation" | "confirmed" | "bookmarked";
       notification_channel: "push" | "sms" | "voice";
-      integration_provider: "jd" | "taobao" | "meituan" | "ctrip" | "tongcheng" | "aliyun_sms" | "aliyun_voice" | "openai";
+      integration_provider:
+        | "jd"
+        | "taobao"
+        | "meituan"
+        | "ctrip"
+        | "tongcheng"
+        | "aliyun_sms"
+        | "aliyun_voice"
+        | "aliyun_ocr"
+        | "aliyun_asr"
+        | "openai";
       audit_action: "create" | "update" | "delete" | "export" | "notify" | "fulfill" | "ai_parse";
     };
     CompositeTypes: Record<string, never>;

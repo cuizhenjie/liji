@@ -13,7 +13,6 @@ import {
   HomeIcon,
   Loader2Icon,
   LockKeyholeIcon,
-  MicIcon,
   NotebookPenIcon,
   PlaneIcon,
   PlusIcon,
@@ -206,18 +205,26 @@ function useWorkspace(initialData: WorkspaceData) {
     data: WorkspaceData;
     storageState: "seed" | "restored" | "saved" | "synced";
     cloudSyncEnabled: boolean;
-  }>(() => {
-    if (typeof window === "undefined") {
-      return { data: initialData, storageState: "seed", cloudSyncEnabled: false };
-    }
-
-    const restored = loadWorkspaceData(window.localStorage);
-    return restored
-      ? { data: restored, storageState: "restored", cloudSyncEnabled: false }
-      : { data: initialData, storageState: "seed", cloudSyncEnabled: false };
-  });
+  }>({ data: initialData, storageState: "seed", cloudSyncEnabled: false });
 
   const data = workspaceState.data;
+
+  useEffect(() => {
+    const restored = loadWorkspaceData(window.localStorage);
+    if (restored) {
+      const timeoutId = window.setTimeout(() => {
+        setWorkspaceState({
+          data: restored,
+          storageState: "restored",
+          cloudSyncEnabled: false,
+        });
+      }, 0);
+
+      return () => {
+        window.clearTimeout(timeoutId);
+      };
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -459,6 +466,46 @@ export function LijiApp({ initialData }: LijiAppProps) {
       workspace.setCaptures((captures) => [result.capture!, ...captures]);
       setCaptureText("");
       toast.success(result.provider === "openai" ? "云端 AI 已解析，待确认" : "已进入任务与确认中心");
+    });
+  }
+
+  async function handleExtractCapture() {
+    if (!captureText.trim()) {
+      toast.error("请输入或粘贴待抽取内容");
+      return;
+    }
+
+    startTransition(async () => {
+      const response = await fetch("/api/capture/extract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: captureText,
+          source: captureSource,
+        }),
+      });
+      const result = (await response.json()) as {
+        extraction?: {
+          extractedText: string;
+          provider: string;
+          requiresManualReview: boolean;
+          warnings: string[];
+        };
+        error?: string;
+      };
+
+      if (!response.ok || !result.extraction) {
+        toast.error(result.error ?? "抽取失败");
+        return;
+      }
+
+      if (result.extraction.extractedText) {
+        setCaptureText(result.extraction.extractedText);
+        toast.success(result.extraction.requiresManualReview ? "已抽取，建议确认后采集" : "已标准化输入");
+        return;
+      }
+
+      toast.error(result.extraction.warnings[0] ?? "未抽取到文本");
     });
   }
 
@@ -854,8 +901,8 @@ export function LijiApp({ initialData }: LijiAppProps) {
                     </Select>
                   </InputGroupAddon>
                   <InputGroupAddon align="inline-end">
-                    <InputGroupButton aria-label="语音录入">
-                      <MicIcon />
+                    <InputGroupButton aria-label="抽取文本" onClick={handleExtractCapture} disabled={isPending}>
+                      <SparklesIcon />
                     </InputGroupButton>
                     <InputGroupButton onClick={handleParseCapture} disabled={isPending}>
                       <SendIcon data-icon="inline-start" />

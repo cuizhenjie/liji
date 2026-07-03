@@ -185,6 +185,7 @@ function aiMemoryRow(userId: string, memory: AiMemory) {
     content: memory.content,
     source: memory.source,
     confidence: memory.confidence,
+    embedding: memory.embedding,
     corrected_at: memory.correctedAt,
   });
 }

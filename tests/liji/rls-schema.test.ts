@@ -10,6 +10,10 @@ const productizationMigration = readFileSync(
   join(process.cwd(), "supabase/migrations/20260702110000_productization_extensions.sql"),
   "utf8"
 );
+const realServiceMigration = readFileSync(
+  join(process.cwd(), "supabase/migrations/20260703120000_real_service_readiness.sql"),
+  "utf8"
+);
 
 describe("Supabase RLS migration", () => {
   it("enables RLS for sensitive user tables", () => {
@@ -47,5 +51,16 @@ describe("Supabase RLS migration", () => {
     expect(productizationMigration).toContain("create table public.fulfillment_order_updates");
     expect(productizationMigration).toContain("create table public.audit_logs");
     expect(productizationMigration).toContain("idx_web_push_user_enabled");
+  });
+
+  it("adds queues and pgvector search for real service readiness", () => {
+    for (const table of ["capture_extraction_jobs", "reminder_escalation_jobs"]) {
+      expect(realServiceMigration).toContain(`create table public.${table}`);
+      expect(realServiceMigration).toContain(`alter table public.${table} enable row level security`);
+      expect(realServiceMigration).toContain("auth.uid() = user_id");
+    }
+
+    expect(realServiceMigration).toContain("idx_ai_memories_embedding_cosine");
+    expect(realServiceMigration).toContain("create or replace function public.match_ai_memories");
   });
 });

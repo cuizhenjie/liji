@@ -49,6 +49,25 @@ function stringArray(row: DbRow, key: string) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
+function numberArray(row: DbRow, key: string) {
+  const value = row[key];
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => (typeof item === "number" ? item : typeof item === "string" ? Number(item) : Number.NaN))
+      .filter((item) => Number.isFinite(item));
+  }
+
+  if (typeof value === "string") {
+    return value
+      .replace(/^\[|\]$/g, "")
+      .split(",")
+      .map((item) => Number(item.trim()))
+      .filter((item) => Number.isFinite(item));
+  }
+
+  return [];
+}
+
 function jsonArray<T>(row: DbRow, key: string, fallback: T[] = []) {
   const value = row[key];
   return Array.isArray(value) ? (value as T[]) : fallback;
@@ -281,12 +300,14 @@ export function mapNotificationLog(row: DbRow): NotificationLog {
 }
 
 export function mapAiMemory(row: DbRow): AiMemory {
+  const embedding = numberArray(row, "embedding");
   return {
     id: text(row, "id"),
     contactId: optionalText(row, "contact_id"),
     content: text(row, "content"),
     source: text(row, "source", "ai") === "manual" ? "manual" : "ai",
     confidence: numberValue(row, "confidence", 0.5),
+    embedding: embedding.length > 0 ? embedding : undefined,
     correctedAt: optionalText(row, "corrected_at"),
   };
 }

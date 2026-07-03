@@ -1,10 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DELETE as deleteContact, POST as saveContact } from "../../src/app/api/contacts/route";
 import { GET as authCallback } from "../../src/app/auth/callback/route";
+import { POST as extractCapture } from "../../src/app/api/capture/extract/route";
+import { POST as embedAiMemories } from "../../src/app/api/ai-memories/embed/route";
 import { POST as fulfillmentCallback } from "../../src/app/api/fulfillment/callback/route";
 import { POST as clickFulfillment } from "../../src/app/api/fulfillment/click/route";
 import { POST as generatePlan } from "../../src/app/api/generate-plan/route";
+import { GET as getHealth } from "../../src/app/api/health/route";
+import { POST as searchAiMemories } from "../../src/app/api/ai-memories/search/route";
 import { GET as getIntegrations } from "../../src/app/api/integrations/route";
 import { GET as getMonthlyInsight } from "../../src/app/api/monthly-insight/route";
 import { GET as getMonthlyReport } from "../../src/app/api/monthly-report/route";
@@ -27,6 +31,10 @@ function jsonRequest(path: string, body: unknown) {
 }
 
 describe("productization API routes", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("redirects auth callbacks back into the app", async () => {
     const response = await authCallback(
       new Request("http://localhost/auth/callback?code=test-code&next=/")
@@ -103,6 +111,13 @@ describe("productization API routes", () => {
   });
 
   it("uses demo fallback for parser, plan and monthly insight when unauthenticated", async () => {
+    const extractResponse = await extractCapture(
+      jsonRequest("/api/capture/extract", {
+        text: "10:21 周明：下次宴请不吃香菜",
+        source: "chat",
+      })
+    );
+    const extracted = await extractResponse.json();
     const parseResponse = await parseInput(
       jsonRequest("/api/parse-input", {
         text: "下周五是女儿5岁生日，预算2000元",
@@ -124,6 +139,7 @@ describe("productization API routes", () => {
     );
     const customInsight = await customInsightResponse.json();
 
+    expect(extracted.extraction.extractedText).toContain("周明");
     expect(parsed.source).toBe("demo");
     expect(parsed.capture.parsed.intent).toBe("event");
     expect(parsed.capture.sourceType).toBe("text");
@@ -137,9 +153,13 @@ describe("productization API routes", () => {
   it("returns integration status without exposing secrets", async () => {
     const response = await getIntegrations();
     const payload = await response.json();
+    const healthResponse = await getHealth();
+    const health = await healthResponse.json();
 
     expect(payload.integrations.length).toBeGreaterThan(0);
     expect(JSON.stringify(payload.integrations)).not.toContain("SUPABASE_SERVICE_ROLE_KEY");
+    expect(health.checks.length).toBeGreaterThan(0);
+    expect(health.summary.total).toBe(health.checks.length);
   });
 
   it("exports redacted data and creates deletion requests", async () => {
@@ -171,7 +191,52 @@ describe("productization API routes", () => {
     expect(payload.source).toBe("demo");
     expect(payload.channels).toEqual(["push", "sms", "voice"]);
     expect(payload.logs).toHaveLength(3);
+    expect(payload.escalationPlan.status).toBe("waiting_first_push");
     expect(payload.externalDelivery).toEqual([]);
+    expect(payload.escalationJob.channels).toEqual(["sms", "voice"]);
+  });
+
+  it("searches AI memories in demo mode", async () => {
+    const response = await searchAiMemories(
+      jsonRequest("/api/ai-memories/search", {
+        query: "周明 香菜",
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload.source).toBe("demo");
+    expect(payload.results[0].memory.content).toContain("周明");
+  });
+
+  it("does not embed AI memories in demo mode", async () => {
+    const response = await embedAiMemories(
+      jsonRequest("/api/ai-memories/embed", {
+        limit: 10,
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload.source).toBe("demo");
+    expect(payload.provider).toBe("disabled");
+    expect(payload.embedded).toBe(0);
+  });
+
+  it("returns queued extraction jobs when OCR provider is configured", async () => {
+    vi.stubEnv("LIJI_CAPTURE_OCR_PROVIDER", "aliyun-ocr");
+
+    const response = await extractCapture(
+      jsonRequest("/api/capture/extract", {
+        source: "screenshot",
+        fileName: "receipt.png",
+        mimeType: "image/png",
+        contentBase64: "ZmFrZQ==",
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload.extraction.provider).toBe("queued-provider");
+    expect(payload.extraction.job.provider).toBe("aliyun-ocr");
+    expect(payload.persistedJob).toBe(false);
   });
 
   it("accepts push subscriptions and fulfillment clicks", async () => {

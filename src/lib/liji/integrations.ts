@@ -1,5 +1,16 @@
 export type IntegrationStatus = {
-  provider: "supabase" | "openai" | "aliyun_sms" | "aliyun_voice" | "jd" | "meituan" | "ctrip" | "web_push";
+  provider:
+    | "supabase"
+    | "openai"
+    | "openai_embedding"
+    | "aliyun_sms"
+    | "aliyun_voice"
+    | "aliyun_ocr"
+    | "aliyun_asr"
+    | "jd"
+    | "meituan"
+    | "ctrip"
+    | "web_push";
   label: string;
   category: "data" | "ai" | "notification" | "fulfillment";
   mode: "configured" | "missing" | "search-link";
@@ -44,6 +55,13 @@ export function getIntegrationStatuses(
       detail: env.OPENAI_API_KEY ? "用户授权后可调用公网模型。" : "未配置 OPENAI_API_KEY，使用本地规则。",
     },
     {
+      provider: "openai_embedding",
+      label: "OpenAI 记忆 Embedding",
+      category: "ai",
+      mode: env.OPENAI_API_KEY ? "configured" : "missing",
+      detail: env.OPENAI_API_KEY ? "可生成 AI 记忆向量并通过 pgvector 召回。" : "未配置 OPENAI_API_KEY，AI 记忆使用词法召回。",
+    },
+    {
       provider: "web_push",
       label: "Web Push",
       category: "notification",
@@ -63,6 +81,20 @@ export function getIntegrationStatuses(
       category: "notification",
       mode: hasAliyunVoice ? "configured" : "missing",
       detail: hasAliyunVoice ? "语音 API 配置完整，可在外部通知开关开启后下发。" : "MVP 将使用 mock voice。",
+    },
+    {
+      provider: "aliyun_ocr",
+      label: "OCR 附件抽取",
+      category: "ai",
+      mode: env.LIJI_CAPTURE_OCR_PROVIDER ? "configured" : "missing",
+      detail: env.LIJI_CAPTURE_OCR_PROVIDER ? "截图、账单附件会进入 OCR provider 队列。" : "截图和账单附件仍需人工补文本。",
+    },
+    {
+      provider: "aliyun_asr",
+      label: "ASR 语音抽取",
+      category: "ai",
+      mode: env.LIJI_CAPTURE_ASR_PROVIDER ? "configured" : "missing",
+      detail: env.LIJI_CAPTURE_ASR_PROVIDER ? "语音附件会进入 ASR provider 队列。" : "语音附件仍需人工补文本。",
     },
     {
       provider: "jd",

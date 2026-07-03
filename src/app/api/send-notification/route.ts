@@ -11,6 +11,11 @@ import {
   createSupabaseServiceClient,
 } from "@/lib/liji/supabase-server";
 import { mapPrivacy } from "@/lib/liji/supabase-mappers";
+import {
+  createLevelOneEscalationJob,
+  planLevelOneEscalation,
+  type ReminderEscalationJob,
+} from "@/lib/liji/reminders";
 import type { NotificationLog } from "@/lib/liji/types";
 import {
   sendWebPushNotifications,
@@ -42,6 +47,22 @@ function notificationLogRow(userId: string, log: NotificationLog) {
   };
 }
 
+function escalationJobRow(userId: string, job: ReminderEscalationJob) {
+  return {
+    id: job.id,
+    user_id: userId,
+    event_id: job.eventId,
+    title: job.title,
+    channels: job.channels,
+    status: job.status,
+    trigger_at: job.triggerAt,
+    last_sent_at: job.lastSentAt,
+    acknowledged_at: job.acknowledgedAt,
+    attempt_count: job.attemptCount,
+    provider_message: job.providerMessage,
+  };
+}
+
 function mapPushSubscription(row: Record<string, unknown>): StoredPushSubscription | null {
   const endpoint = row.endpoint;
   const p256dh = row.p256dh;
@@ -56,7 +77,14 @@ function mapPushSubscription(row: Record<string, unknown>): StoredPushSubscripti
 
 export async function POST(request: Request) {
   const body = requestSchema.parse(await request.json());
-  const delivery = createNotificationDelivery({ ...body, now: new Date() });
+  const now = new Date();
+  const delivery = createNotificationDelivery({ ...body, now });
+  const escalationPlan = planLevelOneEscalation({
+    level: body.level,
+    acknowledgedAt: body.acknowledged ? now.toISOString() : undefined,
+    lastSentAt: body.lastSentAt,
+    now,
+  });
   const supabase = await createSupabaseServerClient();
 
   if (supabase) {
@@ -83,6 +111,30 @@ export async function POST(request: Request) {
     if (error) {
       return Response.json({ error: error.message }, { status: 500 });
     }
+    const pushLog = logs.find((log) => log.channel === "push");
+    const escalationJob = pushLog
+      ? createLevelOneEscalationJob({
+          eventId: body.eventId,
+          title: body.title,
+          level: body.level,
+          lastSentAt: pushLog.sentAt,
+          acknowledgedAt: body.acknowledged ? now.toISOString() : undefined,
+          now,
+        })
+      : null;
+
+    if (escalationJob) {
+      const { error: jobError } = await supabase
+        .from("reminder_escalation_jobs")
+        .upsert(escalationJobRow(data.user.id, escalationJob), {
+          onConflict: "user_id,event_id,trigger_at",
+          ignoreDuplicates: true,
+        });
+      if (jobError) {
+        return Response.json({ error: jobError.message }, { status: 500 });
+      }
+    }
+
     const auditPersistence = await persistAuditLog(
       createAuditLogEntry({
         userId: data.user.id,
@@ -150,10 +202,24 @@ export async function POST(request: Request) {
       status: logs.some((log) => log.status === "escalated") ? "escalated" : "queued",
       pushDelivery,
       externalDelivery,
+      escalationPlan,
+      escalationJob,
       auditPersistence,
       source: "supabase",
     });
   }
+
+  const pushLog = delivery.logs.find((log) => log.channel === "push");
+  const escalationJob = pushLog
+    ? createLevelOneEscalationJob({
+        eventId: body.eventId,
+        title: body.title,
+        level: body.level,
+        lastSentAt: pushLog.sentAt,
+        acknowledgedAt: body.acknowledged ? now.toISOString() : undefined,
+        now,
+      })
+    : null;
 
   return Response.json({
     provider: delivery.provider,
@@ -164,6 +230,8 @@ export async function POST(request: Request) {
     status: delivery.logs.some((log) => log.status === "escalated") ? "escalated" : "queued",
     message: "MVP 使用 mock provider；配置 Supabase 登录后会写入投递日志。",
     externalDelivery: [],
+    escalationPlan,
+    escalationJob,
     source: "demo",
   });
 }

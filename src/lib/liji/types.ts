@@ -178,6 +178,7 @@ export type AiMemory = {
   content: string;
   source: "manual" | "ai";
   confidence: number;
+  embedding?: number[];
   correctedAt?: string;
 };
 
