@@ -36,4 +36,41 @@ describe("budget fulfillment engine", () => {
     expect(plan.budgetCny).toBe(7200);
     expect(plan.items.map((item) => item.category)).toContain("hotel");
   });
+
+  it("adds travel alternatives when quote candidates exceed budget", () => {
+    const plan = generateTravelPlan({
+      title: "深圳商务差旅方案",
+      startDate: "2026-07-08",
+      destination: "深圳",
+      dailyLimitCny: 500,
+      transportCandidates: [
+        {
+          id: "flight-peak",
+          category: "transport",
+          provider: "携程",
+          title: "深圳临近出发机票",
+          amountCny: 900,
+          score: 95,
+          rationale: "临近出发价格较高。",
+          url: "https://www.ctrip.com/?keyword=flight",
+        },
+      ],
+      hotelCandidates: [
+        {
+          id: "hotel-peak",
+          category: "hotel",
+          provider: "同程",
+          title: "深圳核心区酒店",
+          amountCny: 900,
+          score: 92,
+          rationale: "核心区价格较高。",
+          url: "https://www.ly.com/?keyword=hotel",
+        },
+      ],
+    });
+
+    expect(plan.riskLevel).toBe("medium");
+    expect(plan.items.find((item) => item.category === "buffer")?.amountCny).toBe(0);
+    expect(plan.warnings.join(" ")).toContain("替代方案");
+  });
 });

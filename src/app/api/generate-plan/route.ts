@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { generateFestivalPlan, generateTravelPlan } from "@/lib/liji/budget";
 import { buildPlanFulfillmentLinks } from "@/lib/liji/fulfillment";
+import { summarizeCpsAttribution } from "@/lib/liji/cps";
 import { SupabaseWorkspaceRepository } from "@/lib/liji/repository";
 import { demoContacts, demoEvents, demoWorkspace } from "@/lib/liji/sample-data";
 import { createSupabaseServerClient } from "@/lib/liji/supabase-server";
@@ -71,11 +72,14 @@ export async function POST(request: Request) {
 
     const plan = generateFestivalPlan(event, contact, body.budgetCny ?? event.budgetCny, now);
 
+    const fulfillmentLinks = context.thirdPartyLinksEnabled
+      ? buildPlanFulfillmentLinks(plan, context.userId)
+      : [];
+
     return Response.json({
       plan,
-      fulfillmentLinks: context.thirdPartyLinksEnabled
-        ? buildPlanFulfillmentLinks(plan, context.userId)
-        : [],
+      fulfillmentLinks,
+      cpsSummary: summarizeCpsAttribution(fulfillmentLinks),
       source: context.source,
     });
   }
@@ -89,11 +93,14 @@ export async function POST(request: Request) {
     now,
   });
 
+  const fulfillmentLinks = context.thirdPartyLinksEnabled
+    ? buildPlanFulfillmentLinks(plan, context.userId)
+    : [];
+
   return Response.json({
     plan,
-    fulfillmentLinks: context.thirdPartyLinksEnabled
-      ? buildPlanFulfillmentLinks(plan, context.userId)
-      : [],
+    fulfillmentLinks,
+    cpsSummary: summarizeCpsAttribution(fulfillmentLinks),
     source: context.source,
   });
 }

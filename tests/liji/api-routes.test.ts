@@ -149,6 +149,8 @@ describe("productization API routes", () => {
     expect(parsed.capture.sourceType).toBe("text");
     expect(plan.source).toBe("demo");
     expect(plan.plan.items.length).toBeGreaterThan(0);
+    expect(plan.fulfillmentLinks[0].trackingParams.cps_provider).toBeDefined();
+    expect(plan.cpsSummary.totalTrackedAmountCny).toBeGreaterThan(0);
     expect(insight.source).toBe("demo");
     expect(insight.insight.healthScore).toBeGreaterThan(0);
     expect(customInsight.insight.period).toBe("2026-05");

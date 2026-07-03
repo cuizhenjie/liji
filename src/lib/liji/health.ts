@@ -34,6 +34,13 @@ export function getReadinessChecks(
   const hasAliyunSms = hasAliyunBase && has(env.ALIYUN_SMS_SIGN_NAME, env.ALIYUN_SMS_TEMPLATE_CODE, env.LIJI_DEFAULT_NOTIFY_PHONE);
   const hasAliyunVoice = hasAliyunBase && has(env.ALIYUN_VOICE_CALLED_SHOW_NUMBER, env.ALIYUN_VOICE_TTS_CODE, env.LIJI_DEFAULT_NOTIFY_PHONE);
   const externalNotificationsEnabled = env.LIJI_ENABLE_EXTERNAL_NOTIFICATIONS === "true";
+  const hasAnyCpsProvider = [
+    env.JD_UNION_ID,
+    env.TAOBAO_PID,
+    env.MEITUAN_CPS_ID,
+    env.CTRIP_AFFILIATE_ID,
+    env.TONGCHENG_AFFILIATE_ID,
+  ].some((value) => has(value));
 
   return [
     check({
@@ -155,6 +162,15 @@ export function getReadinessChecks(
       ok: has(env.JD_UNION_ID),
       warn: true,
       detail: env.JD_UNION_ID ? "京东 CPS 参数可接入推广链路。" : "未配置 JD_UNION_ID，继续使用搜索跳转。",
+    }),
+    check({
+      id: "fulfillment-cps-providers",
+      label: "履约联盟归因",
+      category: "fulfillment",
+      requiredForProduction: false,
+      ok: hasAnyCpsProvider,
+      warn: true,
+      detail: hasAnyCpsProvider ? "至少一个联盟归因参数已配置。" : "未配置联盟归因参数，链接仍保留礼记追踪参数。",
     }),
   ];
 }

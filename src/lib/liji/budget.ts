@@ -1,6 +1,7 @@
 import { countInclusiveDays } from "./calendar";
 import { getComplianceWarnings } from "./compliance";
 import { createUuid } from "./ids";
+import { buildTravelQuotePlan, type TravelQuoteCandidate } from "./travel-options";
 import type { CalendarEvent, Contact, FulfillmentPlan, PlanItem } from "./types";
 
 const catalog = {
@@ -121,18 +122,23 @@ export function generateTravelPlan(input: {
   endDate?: string;
   destination: string;
   dailyLimitCny?: number;
+  transportCandidates?: TravelQuoteCandidate[];
+  hotelCandidates?: TravelQuoteCandidate[];
   now?: Date;
 }): FulfillmentPlan {
   const days = countInclusiveDays(input.startDate, input.endDate);
   const dailyLimit = input.dailyLimitCny ?? 2400;
   const totalCny = days * dailyLimit;
-  const transport = input.destination.includes("广州") ? 860 : 720;
-  const hotel = Math.min(roundCny(totalCny * 0.45), 680 * Math.max(1, days - 1));
-  const diningAndTaxi = Math.max(0, totalCny - transport - hotel);
-  const warnings =
-    transport + hotel > totalCny * 0.8
-      ? ["交通与住宿占比偏高，建议检查晚间高铁或商旅酒店替代方案。"]
-      : [];
+  const quotePlan = buildTravelQuotePlan({
+    destination: input.destination,
+    startDate: input.startDate,
+    endDate: input.endDate,
+    dailyLimitCny: input.dailyLimitCny,
+    transportCandidates: input.transportCandidates,
+    hotelCandidates: input.hotelCandidates,
+  });
+  const diningAndTaxi = Math.max(0, totalCny - quotePlan.selected.transport.amountCny - quotePlan.selected.hotel.amountCny);
+  const warnings = [...quotePlan.warnings, ...quotePlan.alternatives.map((item) => `替代方案：${item}`)];
 
   return {
     id: createUuid(),
@@ -146,21 +152,21 @@ export function generateTravelPlan(input: {
     items: [
       {
         id: createUuid(),
-        title: `${input.destination}往返高铁/机票`,
+        title: quotePlan.selected.transport.title,
         category: "transport",
-        amountCny: transport,
-        rationale: "5 小时内优先高铁，超时段自动比较机票。",
-        provider: "携程",
-        url: `https://www.ctrip.com/?keyword=${encodeURIComponent(input.destination + " 机票 高铁")}`,
+        amountCny: quotePlan.selected.transport.amountCny,
+        rationale: quotePlan.selected.transport.rationale,
+        provider: quotePlan.selected.transport.provider,
+        url: quotePlan.selected.transport.url,
       },
       {
         id: createUuid(),
-        title: "客户地址 3 公里内高评分酒店",
+        title: quotePlan.selected.hotel.title,
         category: "hotel",
-        amountCny: hotel,
-        rationale: "住宿控制在剩余额度 40%-50%，优先交通便利。",
-        provider: "携程",
-        url: `https://hotels.ctrip.com/?keyword=${encodeURIComponent(input.destination + " 商务酒店")}`,
+        amountCny: quotePlan.selected.hotel.amountCny,
+        rationale: quotePlan.selected.hotel.rationale,
+        provider: quotePlan.selected.hotel.provider,
+        url: quotePlan.selected.hotel.url,
       },
       {
         id: createUuid(),

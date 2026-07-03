@@ -24,6 +24,10 @@ const envSchema = z.object({
   ALIYUN_VOICE_CALLED_SHOW_NUMBER: z.string().min(1).optional(),
   ALIYUN_VOICE_TTS_CODE: z.string().min(1).optional(),
   JD_UNION_ID: z.string().min(1).optional(),
+  TAOBAO_PID: z.string().min(1).optional(),
+  MEITUAN_CPS_ID: z.string().min(1).optional(),
+  CTRIP_AFFILIATE_ID: z.string().min(1).optional(),
+  TONGCHENG_AFFILIATE_ID: z.string().min(1).optional(),
   FULFILLMENT_CALLBACK_SECRET: z.string().min(1).optional(),
 });
 

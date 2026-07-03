@@ -8,8 +8,10 @@ export type IntegrationStatus = {
     | "aliyun_ocr"
     | "aliyun_asr"
     | "jd"
+    | "taobao"
     | "meituan"
     | "ctrip"
+    | "tongcheng"
     | "web_push";
   label: string;
   category: "data" | "ai" | "notification" | "fulfillment";
@@ -101,21 +103,35 @@ export function getIntegrationStatuses(
       label: "京东联盟",
       category: "fulfillment",
       mode: env.JD_UNION_ID ? "configured" : "search-link",
-      detail: env.JD_UNION_ID ? "CPS 参数可扩展。" : "当前使用搜索跳转链接。",
+      detail: env.JD_UNION_ID ? "京东 CPS 归因参数可写入履约链接。" : "当前使用搜索跳转链接。",
+    },
+    {
+      provider: "taobao",
+      label: "淘宝联盟",
+      category: "fulfillment",
+      mode: env.TAOBAO_PID ? "configured" : "search-link",
+      detail: env.TAOBAO_PID ? "淘宝 PID 可写入履约链接。" : "当前使用搜索跳转链接。",
     },
     {
       provider: "meituan",
       label: "美团本地生活",
       category: "fulfillment",
-      mode: "search-link",
-      detail: "MVP 使用搜索跳转，不保存支付凭证。",
+      mode: env.MEITUAN_CPS_ID ? "configured" : "search-link",
+      detail: env.MEITUAN_CPS_ID ? "美团 CPS ID 可写入履约链接。" : "MVP 使用搜索跳转，不保存支付凭证。",
     },
     {
       provider: "ctrip",
       label: "携程商旅",
       category: "fulfillment",
-      mode: "search-link",
-      detail: "MVP 使用商旅搜索跳转。",
+      mode: env.CTRIP_AFFILIATE_ID ? "configured" : "search-link",
+      detail: env.CTRIP_AFFILIATE_ID ? "携程联盟 ID 可写入履约链接。" : "MVP 使用商旅搜索跳转。",
+    },
+    {
+      provider: "tongcheng",
+      label: "同程商旅",
+      category: "fulfillment",
+      mode: env.TONGCHENG_AFFILIATE_ID ? "configured" : "search-link",
+      detail: env.TONGCHENG_AFFILIATE_ID ? "同程联盟 ID 可写入履约链接。" : "MVP 使用商旅搜索跳转。",
     },
   ];
 }

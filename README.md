@@ -42,7 +42,7 @@ npx playwright install chromium webkit
 
 - 采集收件箱：自然语言输入先进入待确认队列，确认后按 intent 写入日程、账单、交易或 AI 记忆。
 - 任务与确认中心：采集项可编辑、确认或驳回，确认结果会本地持久化。
-- 履约方案：方案可确认或归档收藏，外部链接会追加礼记追踪参数，刷新页面后状态仍保留。
+- 履约方案：方案可确认或归档收藏，外部链接会追加礼记追踪参数、联盟归因参数和预估佣金，刷新页面后状态仍保留。
 - 冗余提醒：Level 1 事件可在右侧护航栏确认已阅，确认后停止升级并写入投递日志；通知 provider 可从 mock 替换为阿里云适配。
 - 隐私授权：开关和演示数据可本地保存，支持导出数据、一键重置和本地删除。
 - 产品化基础：新增 AI 结构化解析适配器、通知 provider、履约追踪链接、隐私导出/脱敏、Workspace Repository 和 `/api/workspace/sync` 云端同步入口。
@@ -51,13 +51,14 @@ npx playwright install chromium webkit
 - 后台 worker：`/api/capture/process-jobs` 可消费 OCR/ASR 队列并回写确认中心，`/api/reminder-escalations/run` 可消费 Level 1 升级队列并写入投递日志。
 - 动态合规：`/api/compliance/rules` 可返回系统/用户合规规则，并按联系人标签合成更严格的礼品和宴请限额。
 - 运维闭环：Level 1 升级任务支持失败退避、最大尝试次数和 `ops_alerts` 告警；`/api/ai-memories/maintenance` 支持 AI 记忆衰减、过期复核和批量补 embedding。
+- 差旅报价：差旅方案支持交通/酒店候选报价、预算内择优、超预算提示和替代方案建议。
 
 ## 下一批待接真实服务
 
 - 接入真实 OCR/ASR provider endpoint，并完善附件上传到对象存储后的 `input_uri` 生成。
 - 补充 AI 记忆用户复核 UI 和复核后自动清理 `ops_alerts`。
 - 为短信/语音增加真实回执轮询和 provider request id 对账。
-- 接入电商/本地生活/商旅真实联盟 API 与 CPS 结算后台。
+- 接入电商/本地生活/商旅真实联盟 API 的订单对账、结算回执和退款冲正。
 
 ## 环境变量
 
@@ -88,6 +89,10 @@ ALIYUN_SMS_TEMPLATE_CODE=
 ALIYUN_VOICE_CALLED_SHOW_NUMBER=
 ALIYUN_VOICE_TTS_CODE=
 JD_UNION_ID=
+TAOBAO_PID=
+MEITUAN_CPS_ID=
+CTRIP_AFFILIATE_ID=
+TONGCHENG_AFFILIATE_ID=
 FULFILLMENT_CALLBACK_SECRET=
 ```
 
@@ -112,3 +117,9 @@ Supabase migration 位于 `supabase/migrations/20260701193000_initial_liji_schem
 - `capture_extraction_jobs`、`reminder_escalation_jobs`
 - AI 记忆向量索引 `idx_ai_memories_embedding_cosine`
 - pgvector 召回函数 `match_ai_memories`
+
+记忆维护与重试 migration 位于 `supabase/migrations/20260703150000_memory_retry_ops.sql`，包含：
+
+- `reminder_escalation_jobs` 重试/退避字段
+- `ai_memories` 复核、衰减和 embedding 时间字段
+- `ops_alerts` 运维告警表

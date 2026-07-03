@@ -1,3 +1,8 @@
+import {
+  buildCpsAttribution,
+  summarizeCpsAttribution,
+  type CpsSettlementMode,
+} from "./cps";
 import type { FulfillmentPlan, PlanItem } from "./types";
 
 export type FulfillmentProvider = "jd" | "taobao" | "meituan" | "ctrip" | "tongcheng";
@@ -7,6 +12,11 @@ export type TrackedFulfillmentLink = {
   label: string;
   url: string;
   cpsReady: boolean;
+  amountCny: number;
+  commissionRate: number;
+  estimatedCommissionCny: number;
+  settlementMode: CpsSettlementMode;
+  trackingParams: Record<string, string>;
 };
 
 const providerBaseUrl: Record<FulfillmentProvider, string> = {
@@ -34,18 +44,28 @@ export function buildTrackedFulfillmentLink(
   const provider = providerForPlanItem(item);
   const baseUrl = item.url ?? providerBaseUrl[provider];
   const url = new URL(baseUrl);
+  const attribution = buildCpsAttribution({
+    provider,
+    amountCny: item.amountCny,
+    planId: plan.id,
+    scenario: plan.scenario,
+    userId,
+  });
 
-  url.searchParams.set("utm_source", "liji");
-  url.searchParams.set("utm_medium", "fulfillment");
-  url.searchParams.set("utm_campaign", plan.scenario);
-  url.searchParams.set("liji_plan_id", plan.id);
-  url.searchParams.set("liji_user", userId);
+  Object.entries(attribution.trackingParams).forEach(([key, value]) => {
+    url.searchParams.set(key, value);
+  });
 
   return {
     provider,
     label: item.title,
     url: url.toString(),
-    cpsReady: provider !== "jd" || Boolean(process.env.JD_UNION_ID),
+    cpsReady: attribution.cpsReady,
+    amountCny: item.amountCny,
+    commissionRate: attribution.commissionRate,
+    estimatedCommissionCny: attribution.estimatedCommissionCny,
+    settlementMode: attribution.settlementMode,
+    trackingParams: attribution.trackingParams,
   };
 }
 
@@ -53,4 +73,8 @@ export function buildPlanFulfillmentLinks(plan: FulfillmentPlan, userId?: string
   return plan.items
     .filter((item) => item.url || item.provider !== "内部")
     .map((item) => buildTrackedFulfillmentLink(item, plan, userId));
+}
+
+export function summarizePlanCps(plan: FulfillmentPlan, userId?: string) {
+  return summarizeCpsAttribution(buildPlanFulfillmentLinks(plan, userId));
 }
