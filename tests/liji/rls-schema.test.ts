@@ -46,6 +46,10 @@ const fulfillmentReconciliationMigration = readFileSync(
   join(process.cwd(), "supabase/migrations/20260703222000_fulfillment_settlement_reconciliation.sql"),
   "utf8"
 );
+const notificationRetryOpsMigration = readFileSync(
+  join(process.cwd(), "supabase/migrations/20260703233000_notification_retry_ops.sql"),
+  "utf8"
+);
 
 describe("Supabase RLS migration", () => {
   it("enables RLS for sensitive user tables", () => {
@@ -156,5 +160,15 @@ describe("Supabase RLS migration", () => {
     expect(fulfillmentReconciliationMigration).toContain("for all using (auth.uid() = user_id)");
     expect(fulfillmentReconciliationMigration).toContain("idx_fulfillment_order_updates_reconcile");
     expect(fulfillmentReconciliationMigration).toContain("idx_fulfillment_reconciliation_reports_user_period");
+  });
+
+  it("adds bounded notification retry metadata", () => {
+    expect(notificationRetryOpsMigration).toContain("retry_of_log_id uuid references public.notification_logs");
+    expect(notificationRetryOpsMigration).toContain("retry_count int not null default 0");
+    expect(notificationRetryOpsMigration).toContain("max_retries int not null default 2");
+    expect(notificationRetryOpsMigration).toContain("next_retry_at timestamptz");
+    expect(notificationRetryOpsMigration).toContain("stopped_at timestamptz");
+    expect(notificationRetryOpsMigration).toContain("idx_notification_logs_retry_due");
+    expect(notificationRetryOpsMigration).toContain("idx_notification_logs_retry_parent");
   });
 });

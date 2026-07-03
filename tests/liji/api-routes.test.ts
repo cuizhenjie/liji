@@ -2,9 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DELETE as deleteContact, POST as saveContact } from "../../src/app/api/contacts/route";
 import { GET as authCallback } from "../../src/app/auth/callback/route";
+import { POST as batchAiMemories } from "../../src/app/api/ai-memories/batch/route";
 import { POST as extractCapture } from "../../src/app/api/capture/extract/route";
+import { POST as manualCompleteCapture } from "../../src/app/api/capture/manual-complete/route";
 import { POST as captureProviderCallback } from "../../src/app/api/capture/provider-callback/route";
 import { POST as processCaptureJobs } from "../../src/app/api/capture/process-jobs/route";
+import { POST as runCaptureSla } from "../../src/app/api/capture/sla/run/route";
 import { GET as getComplianceRules } from "../../src/app/api/compliance/rules/route";
 import { POST as embedAiMemories } from "../../src/app/api/ai-memories/embed/route";
 import { POST as maintainAiMemories } from "../../src/app/api/ai-memories/maintenance/route";
@@ -26,6 +29,7 @@ import { POST as savePrivacySettings } from "../../src/app/api/privacy/settings/
 import { POST as sendNotification } from "../../src/app/api/send-notification/route";
 import { POST as pushNotificationReceipts } from "../../src/app/api/notification-receipts/push/route";
 import { POST as runNotificationReceipts } from "../../src/app/api/notification-receipts/run/route";
+import { POST as runNotificationRetries } from "../../src/app/api/notification-retries/run/route";
 import { POST as runReminderEscalations } from "../../src/app/api/reminder-escalations/run/route";
 import { GET as getWorkspace } from "../../src/app/api/workspace/route";
 import { POST as syncWorkspace } from "../../src/app/api/workspace/sync/route";
@@ -259,6 +263,21 @@ describe("productization API routes", () => {
     expect(payload.memory.correctedAt).toBeDefined();
   });
 
+  it("batch processes AI memories in demo mode", async () => {
+    const response = await batchAiMemories(
+      jsonRequest("/api/ai-memories/batch", {
+        action: "ignore",
+        memoryIds: ["m-1", "m-2"],
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload.source).toBe("demo");
+    expect(payload.persisted).toBe(false);
+    expect(payload.action).toBe("ignore");
+    expect(payload.updated).toBeGreaterThan(0);
+  });
+
   it("does not embed AI memories in demo mode", async () => {
     const response = await embedAiMemories(
       jsonRequest("/api/ai-memories/embed", {
@@ -307,6 +326,21 @@ describe("productization API routes", () => {
     expect(payload.callback.status).toBe("completed");
   });
 
+  it("accepts manual capture completion in demo mode", async () => {
+    const response = await manualCompleteCapture(
+      jsonRequest("/api/capture/manual-complete", {
+        jobId: "capjob-1",
+        extractedText: "周明下次宴请不吃香菜",
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload.source).toBe("demo");
+    expect(payload.persisted).toBe(false);
+    expect(payload.job.status).toBe("completed");
+    expect(payload.capture.rawText).toContain("周明");
+  });
+
   it("serves compliance rules and demo workers without Supabase", async () => {
     const complianceResponse = await getComplianceRules(
       new Request("http://localhost/api/compliance/rules?label=国企高管")
@@ -316,6 +350,10 @@ describe("productization API routes", () => {
       jsonRequest("/api/capture/process-jobs", { limit: 5 })
     );
     const captureWorker = await captureWorkerResponse.json();
+    const captureSlaResponse = await runCaptureSla(
+      jsonRequest("/api/capture/sla/run", { limit: 5, staleMinutes: 30 })
+    );
+    const captureSla = await captureSlaResponse.json();
     const escalationWorkerResponse = await runReminderEscalations(
       jsonRequest("/api/reminder-escalations/run", { limit: 5 })
     );
@@ -324,6 +362,10 @@ describe("productization API routes", () => {
       jsonRequest("/api/notification-receipts/run", { limit: 5 })
     );
     const receiptWorker = await receiptWorkerResponse.json();
+    const retryWorkerResponse = await runNotificationRetries(
+      jsonRequest("/api/notification-retries/run", { limit: 5 })
+    );
+    const retryWorker = await retryWorkerResponse.json();
     const fulfillmentReconcileResponse = await reconcileFulfillment(
       jsonRequest("/api/fulfillment/reconcile", { period: "2026-07", limit: 5 })
     );
@@ -336,8 +378,12 @@ describe("productization API routes", () => {
     expect(compliance.source).toBe("demo");
     expect(compliance.profile.giftLimitCny).toBe(200);
     expect(captureWorker.source).toBe("demo");
+    expect(captureSla.source).toBe("demo");
+    expect(captureSla.processed[0].alertSource).toBe("capture_sla");
     expect(escalationWorker.source).toBe("demo");
     expect(receiptWorker.source).toBe("demo");
+    expect(retryWorker.source).toBe("demo");
+    expect(retryWorker.processed[0].retryCount).toBe(1);
     expect(fulfillmentReconcile.source).toBe("demo");
     expect(fulfillmentReconcile.reports[0].summary.refundedOrders).toBe(1);
     expect(maintenance.source).toBe("demo");

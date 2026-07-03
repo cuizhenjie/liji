@@ -171,6 +171,12 @@ export type Database = {
         provider_status: "not_applicable" | "submitted" | "pending" | "delivered" | "failed" | "unknown";
         receipt_checked_at: string | null;
         raw_provider_receipt: Json;
+        retry_of_log_id: string | null;
+        retry_count: number;
+        max_retries: number;
+        next_retry_at: string | null;
+        stopped_at: string | null;
+        stop_reason: string | null;
         created_at: string;
       }>;
       ai_memories: Table<{

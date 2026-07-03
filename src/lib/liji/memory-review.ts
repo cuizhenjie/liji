@@ -1,5 +1,7 @@
 import type { AiMemory, WorkspaceData } from "./types";
 
+export type AiMemoryBatchAction = "review" | "ignore" | "reembed" | "delete";
+
 export function reviewAiMemory(
   memory: AiMemory,
   params: {
@@ -18,6 +20,63 @@ export function reviewAiMemory(
     reviewStatus: "healthy",
     reviewedAt,
     correctedAt: reviewedAt,
+  };
+}
+
+export function applyAiMemoryBatchAction(
+  memory: AiMemory,
+  params: {
+    action: Exclude<AiMemoryBatchAction, "delete">;
+    content?: string;
+    now?: Date;
+  }
+): {
+  memory: AiMemory;
+  contentChanged: boolean;
+  embeddingInvalidated: boolean;
+} {
+  const reviewedAt = (params.now ?? new Date()).toISOString();
+
+  if (params.action === "review") {
+    const reviewed = reviewAiMemory(memory, {
+      content: params.content,
+      now: params.now,
+    });
+    const contentChanged = reviewed.content !== memory.content;
+
+    return {
+      memory: {
+        ...reviewed,
+        embedding: contentChanged ? undefined : reviewed.embedding,
+        lastEmbeddedAt: contentChanged ? undefined : reviewed.lastEmbeddedAt,
+      },
+      contentChanged,
+      embeddingInvalidated: contentChanged,
+    };
+  }
+
+  if (params.action === "reembed") {
+    return {
+      memory: {
+        ...memory,
+        embedding: undefined,
+        reviewStatus: "healthy",
+        reviewedAt,
+        lastEmbeddedAt: undefined,
+      },
+      contentChanged: false,
+      embeddingInvalidated: true,
+    };
+  }
+
+  return {
+    memory: {
+      ...memory,
+      reviewStatus: "healthy",
+      reviewedAt,
+    },
+    contentChanged: false,
+    embeddingInvalidated: false,
   };
 }
 
