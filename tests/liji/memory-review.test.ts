@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  applyAiMemoryBatchAction,
   applyReviewedAiMemory,
   reviewAiMemory,
   reviewWorkspaceAiMemory,
@@ -49,5 +50,28 @@ describe("AI memory review", () => {
 
     expect(reviewed.memory).toBeUndefined();
     expect(reviewed.workspace).toBe(demoWorkspace);
+  });
+
+  it("supports batch ignore and reembed state transitions", () => {
+    const staleMemory = {
+      ...demoWorkspace.aiMemories[0],
+      embedding: [0.1, 0.2],
+      lastEmbeddedAt: "2026-07-01T00:00:00.000Z",
+      reviewStatus: "stale" as const,
+    };
+    const ignored = applyAiMemoryBatchAction(staleMemory, {
+      action: "ignore",
+      now: new Date("2026-07-03T10:00:00+08:00"),
+    });
+    const reembed = applyAiMemoryBatchAction(staleMemory, {
+      action: "reembed",
+      now: new Date("2026-07-03T10:00:00+08:00"),
+    });
+
+    expect(ignored.memory.reviewStatus).toBe("healthy");
+    expect(ignored.embeddingInvalidated).toBe(false);
+    expect(reembed.memory.embedding).toBeUndefined();
+    expect(reembed.memory.lastEmbeddedAt).toBeUndefined();
+    expect(reembed.embeddingInvalidated).toBe(true);
   });
 });
