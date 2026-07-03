@@ -11,6 +11,7 @@ import { POST as maintainAiMemories } from "../../src/app/api/ai-memories/mainte
 import { POST as reviewAiMemory } from "../../src/app/api/ai-memories/review/route";
 import { POST as fulfillmentCallback } from "../../src/app/api/fulfillment/callback/route";
 import { POST as clickFulfillment } from "../../src/app/api/fulfillment/click/route";
+import { POST as reconcileFulfillment } from "../../src/app/api/fulfillment/reconcile/route";
 import { POST as generatePlan } from "../../src/app/api/generate-plan/route";
 import { GET as getHealth } from "../../src/app/api/health/route";
 import { POST as searchAiMemories } from "../../src/app/api/ai-memories/search/route";
@@ -323,6 +324,10 @@ describe("productization API routes", () => {
       jsonRequest("/api/notification-receipts/run", { limit: 5 })
     );
     const receiptWorker = await receiptWorkerResponse.json();
+    const fulfillmentReconcileResponse = await reconcileFulfillment(
+      jsonRequest("/api/fulfillment/reconcile", { period: "2026-07", limit: 5 })
+    );
+    const fulfillmentReconcile = await fulfillmentReconcileResponse.json();
     const maintenanceResponse = await maintainAiMemories(
       jsonRequest("/api/ai-memories/maintenance", { limitUsers: 5, embedMissing: false })
     );
@@ -333,6 +338,8 @@ describe("productization API routes", () => {
     expect(captureWorker.source).toBe("demo");
     expect(escalationWorker.source).toBe("demo");
     expect(receiptWorker.source).toBe("demo");
+    expect(fulfillmentReconcile.source).toBe("demo");
+    expect(fulfillmentReconcile.reports[0].summary.refundedOrders).toBe(1);
     expect(maintenance.source).toBe("demo");
     expect(maintenance.processed[0].reviews.length).toBeGreaterThan(0);
   });
@@ -369,12 +376,16 @@ describe("productization API routes", () => {
         status: "paid",
         planId: "11111111-1111-4111-8111-111111111111",
         amountCny: 1200,
+        commissionCny: 36,
+        settlementStatus: "settled",
+        settlementPeriod: "2026-07",
       })
     );
     const payload = await response.json();
 
     expect(payload.source).toBe("demo");
     expect(payload.callback.status).toBe("paid");
+    expect(payload.callback.commissionCny).toBe(36);
     expect(payload.persisted).toBe(false);
   });
 

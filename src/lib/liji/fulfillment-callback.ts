@@ -9,6 +9,14 @@ export type FulfillmentCallbackStatus =
   | "refunded"
   | "failed";
 
+export type FulfillmentSettlementStatus =
+  | "pending"
+  | "eligible"
+  | "settled"
+  | "reversed"
+  | "disputed"
+  | "not_applicable";
+
 export type FulfillmentCallbackPayload = {
   provider: "jd" | "taobao" | "meituan" | "ctrip" | "tongcheng";
   externalOrderId: string;
@@ -16,6 +24,10 @@ export type FulfillmentCallbackPayload = {
   planId?: string;
   planItemId?: string;
   amountCny?: number;
+  commissionCny?: number;
+  refundedAmountCny?: number;
+  settlementStatus?: FulfillmentSettlementStatus;
+  settlementPeriod?: string;
   occurredAt?: string;
 };
 

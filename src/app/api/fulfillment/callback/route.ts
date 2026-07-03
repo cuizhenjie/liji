@@ -5,6 +5,10 @@ import { env } from "@/lib/liji/env";
 import {
   verifyFulfillmentCallbackSignature,
 } from "@/lib/liji/fulfillment-callback";
+import {
+  fulfillmentOrderUpdatePatch,
+  normalizeSettlementStatus,
+} from "@/lib/liji/fulfillment-reconciliation";
 import { createUuid } from "@/lib/liji/ids";
 import { createSupabaseServiceClient } from "@/lib/liji/supabase-server";
 
@@ -23,6 +27,17 @@ const callbackSchema = z.object({
   planId: z.string().optional(),
   planItemId: z.string().optional(),
   amountCny: z.number().nonnegative().optional(),
+  commissionCny: z.number().nonnegative().optional(),
+  refundedAmountCny: z.number().nonnegative().optional(),
+  settlementStatus: z.enum([
+    "pending",
+    "eligible",
+    "settled",
+    "reversed",
+    "disputed",
+    "not_applicable",
+  ]).optional(),
+  settlementPeriod: z.string().optional(),
   occurredAt: z.string().optional(),
 });
 
@@ -69,6 +84,12 @@ export async function POST(request: Request) {
       external_order_id: callback.externalOrderId,
       status: callback.status,
       amount_cny: callback.amountCny,
+      ...fulfillmentOrderUpdatePatch({
+        commissionCny: callback.commissionCny,
+        refundedAmountCny: callback.refundedAmountCny,
+        settlementStatus: normalizeSettlementStatus(callback.settlementStatus, callback.status),
+        settlementPeriod: callback.settlementPeriod,
+      }),
       raw_payload: body,
       received_at: callback.receivedAt,
     });
@@ -89,6 +110,7 @@ export async function POST(request: Request) {
       provider: callback.provider,
       status: callback.status,
       externalOrderId: callback.externalOrderId,
+      settlementStatus: normalizeSettlementStatus(callback.settlementStatus, callback.status),
     },
   });
   const auditPersistence = await persistAuditLog(audit, supabase);

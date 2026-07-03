@@ -22,6 +22,7 @@ export const cloudDeletionTableOrder = [
   "web_push_subscriptions",
   "fulfillment_clicks",
   "fulfillment_order_updates",
+  "fulfillment_reconciliation_reports",
   "monthly_reports",
 ] as const;
 

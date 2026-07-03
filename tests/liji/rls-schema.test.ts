@@ -42,6 +42,10 @@ const captureProviderCallbacksMigration = readFileSync(
   join(process.cwd(), "supabase/migrations/20260703212000_capture_provider_callbacks.sql"),
   "utf8"
 );
+const fulfillmentReconciliationMigration = readFileSync(
+  join(process.cwd(), "supabase/migrations/20260703222000_fulfillment_settlement_reconciliation.sql"),
+  "utf8"
+);
 
 describe("Supabase RLS migration", () => {
   it("enables RLS for sensitive user tables", () => {
@@ -138,5 +142,19 @@ describe("Supabase RLS migration", () => {
     expect(captureProviderCallbacksMigration).toContain("max_attempts int not null default 3");
     expect(captureProviderCallbacksMigration).toContain("idx_capture_extraction_jobs_retry");
     expect(captureProviderCallbacksMigration).toContain("idx_capture_extraction_jobs_provider_request");
+  });
+
+  it("adds fulfillment settlement reconciliation reports", () => {
+    expect(fulfillmentReconciliationMigration).toContain("commission_cny numeric(12,2)");
+    expect(fulfillmentReconciliationMigration).toContain("refunded_amount_cny numeric(12,2)");
+    expect(fulfillmentReconciliationMigration).toContain("settlement_status text not null default");
+    expect(fulfillmentReconciliationMigration).toContain("reconciled_at timestamptz");
+    expect(fulfillmentReconciliationMigration).toContain("create table if not exists public.fulfillment_reconciliation_reports");
+    expect(fulfillmentReconciliationMigration).toContain(
+      "alter table public.fulfillment_reconciliation_reports enable row level security"
+    );
+    expect(fulfillmentReconciliationMigration).toContain("for all using (auth.uid() = user_id)");
+    expect(fulfillmentReconciliationMigration).toContain("idx_fulfillment_order_updates_reconcile");
+    expect(fulfillmentReconciliationMigration).toContain("idx_fulfillment_reconciliation_reports_user_period");
   });
 });

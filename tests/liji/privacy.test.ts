@@ -34,6 +34,12 @@ describe("privacy operations", () => {
       cloudDeletionTableOrder.indexOf("events")
     );
     expect(cloudDeletionTableOrder).toContain("fulfillment_order_updates");
+    expect(cloudDeletionTableOrder.indexOf("fulfillment_order_updates")).toBeLessThan(
+      cloudDeletionTableOrder.indexOf("fulfillment_reconciliation_reports")
+    );
+    expect(cloudDeletionTableOrder.indexOf("fulfillment_reconciliation_reports")).toBeLessThan(
+      cloudDeletionTableOrder.indexOf("monthly_reports")
+    );
     expect(cloudDeletionTableOrder.indexOf("ai_memories")).toBeLessThan(
       cloudDeletionTableOrder.indexOf("contacts")
     );

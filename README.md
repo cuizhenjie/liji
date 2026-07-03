@@ -58,13 +58,14 @@ npx playwright install chromium webkit
 - 回执推送：`/api/notification-receipts/push` 可接收阿里云 SMS HTTP 批量推送、MNS 消费转发和 VoiceReport，按 BizId/CallId 幂等更新投递日志。
 - 手机号路由：隐私中心可保存用户级通知手机号，短信/语音发送、Level 1 升级和回执轮询优先按用户手机号路由。
 - OCR/ASR 回调：`/api/capture/provider-callback` 支持 provider 异步回调验签、写入确认中心、失败退避重试和耗尽后 `ops_alerts` 告警。
+- 履约对账：履约回调支持结算状态、佣金、退款冲正字段，`/api/fulfillment/reconcile` 可按月生成订单净额、佣金、退款和风险标记报表。
 
 ## 下一批待接真实服务
 
 - 接入真实 OCR/ASR provider 账号、回调地址白名单、供应商 SLA 监控和人工补录运营台。
 - 增强 AI 记忆复核运营：批量复核、忽略/删除记忆、复核后重新 embedding。
 - 增强通知回执：完善失败重呼策略、投递异常运营告警面板和多渠道退订/停呼策略。
-- 接入电商/本地生活/商旅真实联盟 API 的订单对账、结算回执和退款冲正。
+- 接入电商/本地生活/商旅真实联盟 API 拉单、平台签名验签、结算差异人工处理台和财务导出。
 
 ## 环境变量
 
@@ -157,3 +158,8 @@ OCR/ASR provider 回调 migration 位于 `supabase/migrations/20260703212000_cap
 
 - `capture_extraction_jobs` 的 provider request、回调时间、重试次数和错误字段
 - provider 异步回调追踪索引与失败重试扫描索引
+
+履约结算对账 migration 位于 `supabase/migrations/20260703222000_fulfillment_settlement_reconciliation.sql`，包含：
+
+- `fulfillment_order_updates` 的佣金、退款、结算状态、结算周期和已对账时间字段
+- `fulfillment_reconciliation_reports` 月度对账报表表、RLS 策略和查询索引

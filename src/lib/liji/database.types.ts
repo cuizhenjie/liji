@@ -255,8 +255,20 @@ export type Database = {
         external_order_id: string;
         status: "clicked" | "reserved" | "paid" | "fulfilled" | "cancelled" | "refunded" | "failed";
         amount_cny: number | null;
+        commission_cny: number | null;
+        refunded_amount_cny: number | null;
+        settlement_status: "pending" | "eligible" | "settled" | "reversed" | "disputed" | "not_applicable";
+        settlement_period: string | null;
         raw_payload: Json;
         received_at: string;
+        reconciled_at: string | null;
+      }>;
+      fulfillment_reconciliation_reports: Table<{
+        id: string;
+        user_id: string;
+        period: string;
+        summary: Json;
+        generated_at: string;
       }>;
       capture_extraction_jobs: Table<{
         id: string;
