@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { enrichWorkspaceAiMemoryEmbeddings } from "@/lib/liji/memory-embedding";
 import { DemoWorkspaceRepository, SupabaseWorkspaceRepository } from "@/lib/liji/repository";
 import { createSupabaseServerClient, ensureUserProfile } from "@/lib/liji/supabase-server";
 import type { WorkspaceData } from "@/lib/liji/types";
@@ -40,9 +41,11 @@ export async function POST(request: Request) {
 
   await ensureUserProfile(supabase, data.user);
   const repository = new SupabaseWorkspaceRepository(supabase);
+  const enriched = await enrichWorkspaceAiMemoryEmbeddings({ workspace });
 
   return Response.json({
-    sync: await repository.syncWorkspace(data.user.id, workspace),
+    sync: await repository.syncWorkspace(data.user.id, enriched.workspace),
+    aiMemoryEmbeddings: enriched.outcomes,
     source: "supabase",
   });
 }

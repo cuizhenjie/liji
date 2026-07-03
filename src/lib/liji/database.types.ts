@@ -258,6 +258,7 @@ export type Database = {
         status: "queued" | "processing" | "completed" | "failed" | "cancelled";
         file_name: string | null;
         mime_type: string | null;
+        input_uri: string | null;
         content_hash: string;
         extracted_text: string | null;
         error_message: string | null;

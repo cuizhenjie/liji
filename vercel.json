@@ -5,6 +5,14 @@
       "schedule": "*/15 * * * *"
     },
     {
+      "path": "/api/reminder-escalations/run",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/capture/process-jobs",
+      "schedule": "*/10 * * * *"
+    },
+    {
       "path": "/api/monthly-report",
       "schedule": "0 1 1 * *"
     }

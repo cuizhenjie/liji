@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DELETE as deleteContact, POST as saveContact } from "../../src/app/api/contacts/route";
 import { GET as authCallback } from "../../src/app/auth/callback/route";
 import { POST as extractCapture } from "../../src/app/api/capture/extract/route";
+import { POST as processCaptureJobs } from "../../src/app/api/capture/process-jobs/route";
+import { GET as getComplianceRules } from "../../src/app/api/compliance/rules/route";
 import { POST as embedAiMemories } from "../../src/app/api/ai-memories/embed/route";
 import { POST as fulfillmentCallback } from "../../src/app/api/fulfillment/callback/route";
 import { POST as clickFulfillment } from "../../src/app/api/fulfillment/click/route";
@@ -18,6 +20,7 @@ import { POST as deletePrivacy } from "../../src/app/api/privacy/delete/route";
 import { GET as exportPrivacy } from "../../src/app/api/privacy/export/route";
 import { POST as savePrivacySettings } from "../../src/app/api/privacy/settings/route";
 import { POST as sendNotification } from "../../src/app/api/send-notification/route";
+import { POST as runReminderEscalations } from "../../src/app/api/reminder-escalations/run/route";
 import { GET as getWorkspace } from "../../src/app/api/workspace/route";
 import { POST as syncWorkspace } from "../../src/app/api/workspace/sync/route";
 import { demoWorkspace } from "../../src/lib/liji/sample-data";
@@ -237,6 +240,26 @@ describe("productization API routes", () => {
     expect(payload.extraction.provider).toBe("queued-provider");
     expect(payload.extraction.job.provider).toBe("aliyun-ocr");
     expect(payload.persistedJob).toBe(false);
+  });
+
+  it("serves compliance rules and demo workers without Supabase", async () => {
+    const complianceResponse = await getComplianceRules(
+      new Request("http://localhost/api/compliance/rules?label=国企高管")
+    );
+    const compliance = await complianceResponse.json();
+    const captureWorkerResponse = await processCaptureJobs(
+      jsonRequest("/api/capture/process-jobs", { limit: 5 })
+    );
+    const captureWorker = await captureWorkerResponse.json();
+    const escalationWorkerResponse = await runReminderEscalations(
+      jsonRequest("/api/reminder-escalations/run", { limit: 5 })
+    );
+    const escalationWorker = await escalationWorkerResponse.json();
+
+    expect(compliance.source).toBe("demo");
+    expect(compliance.profile.giftLimitCny).toBe(200);
+    expect(captureWorker.source).toBe("demo");
+    expect(escalationWorker.source).toBe("demo");
   });
 
   it("accepts push subscriptions and fulfillment clicks", async () => {

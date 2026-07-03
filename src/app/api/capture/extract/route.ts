@@ -9,6 +9,7 @@ const requestSchema = z.object({
   text: z.string().optional(),
   fileName: z.string().optional(),
   mimeType: z.string().optional(),
+  contentUri: z.string().url().optional(),
   contentBase64: z.string().optional(),
 });
 
@@ -22,6 +23,7 @@ function jobRow(userId: string, job: CaptureExtractionJob) {
     status: job.status,
     file_name: job.fileName,
     mime_type: job.mimeType,
+    input_uri: job.inputUri,
     content_hash: job.contentHash,
   };
 }

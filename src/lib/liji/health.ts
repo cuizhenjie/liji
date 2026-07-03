@@ -97,6 +97,15 @@ export function getReadinessChecks(
       detail: env.LIJI_CAPTURE_ASR_PROVIDER ? "语音附件可进入 ASR 抽取队列。" : "未配置 LIJI_CAPTURE_ASR_PROVIDER，语音附件会等待人工补录。",
     }),
     check({
+      id: "capture-provider-endpoint",
+      label: "OCR/ASR Worker Endpoint",
+      category: "ai",
+      requiredForProduction: false,
+      ok: has(env.LIJI_CAPTURE_PROVIDER_ENDPOINT),
+      warn: true,
+      detail: env.LIJI_CAPTURE_PROVIDER_ENDPOINT ? "采集抽取 worker 可调用外部 provider。" : "未配置 LIJI_CAPTURE_PROVIDER_ENDPOINT，抽取 job 会停留在队列中。",
+    }),
+    check({
       id: "web-push",
       label: "Web Push",
       category: "notification",

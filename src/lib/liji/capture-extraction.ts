@@ -7,6 +7,7 @@ export type CaptureExtractionRequest = {
   text?: string;
   fileName?: string;
   mimeType?: string;
+  contentUri?: string;
   contentBase64?: string;
 };
 
@@ -28,6 +29,7 @@ export type CaptureExtractionJob = {
   status: "queued";
   fileName?: string;
   mimeType?: string;
+  inputUri?: string;
   contentHash: string;
 };
 
@@ -141,6 +143,7 @@ export function extractCaptureText(input: CaptureExtractionRequest): CaptureExtr
           status: "queued",
           fileName: input.fileName,
           mimeType: input.mimeType,
+          inputUri: input.contentUri,
           contentHash: hash,
         },
       };

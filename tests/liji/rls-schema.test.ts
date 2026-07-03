@@ -14,6 +14,10 @@ const realServiceMigration = readFileSync(
   join(process.cwd(), "supabase/migrations/20260703120000_real_service_readiness.sql"),
   "utf8"
 );
+const captureWorkerMigration = readFileSync(
+  join(process.cwd(), "supabase/migrations/20260703133000_capture_worker_inputs.sql"),
+  "utf8"
+);
 
 describe("Supabase RLS migration", () => {
   it("enables RLS for sensitive user tables", () => {
@@ -62,5 +66,10 @@ describe("Supabase RLS migration", () => {
 
     expect(realServiceMigration).toContain("idx_ai_memories_embedding_cosine");
     expect(realServiceMigration).toContain("create or replace function public.match_ai_memories");
+  });
+
+  it("adds worker input metadata for capture extraction jobs", () => {
+    expect(captureWorkerMigration).toContain("add column if not exists input_uri text");
+    expect(captureWorkerMigration).toContain("idx_capture_extraction_jobs_provider_status");
   });
 });

@@ -48,12 +48,14 @@ npx playwright install chromium webkit
 - 产品化基础：新增 AI 结构化解析适配器、通知 provider、履约追踪链接、隐私导出/脱敏、Workspace Repository 和 `/api/workspace/sync` 云端同步入口。
 - 生产化推进：`/api/health` 暴露上线 readiness 检查，`/api/capture/extract` 支持语音/OCR/聊天/账单文本标准化，`/api/ai-memories/search` 提供 AI 记忆召回骨架。
 - 真实服务前置：AI 记忆支持 OpenAI embedding 生成与 pgvector RPC 召回，附件型采集可进入 OCR/ASR job 队列，Level 1 可生成 15 分钟升级 job。
+- 后台 worker：`/api/capture/process-jobs` 可消费 OCR/ASR 队列并回写确认中心，`/api/reminder-escalations/run` 可消费 Level 1 升级队列并写入投递日志。
+- 动态合规：`/api/compliance/rules` 可返回系统/用户合规规则，并按联系人标签合成更严格的礼品和宴请限额。
 
 ## 下一批待接真实服务
 
-- 实现 OCR/ASR job worker，对接阿里云或其他 provider，回写 `capture_extraction_jobs.extracted_text` 并进入确认中心。
-- 将 AI 记忆 embedding 生成接入采集确认流程，并补充纠偏衰减、过期提醒和批量重嵌入任务。
-- 让 `reminder_escalation_jobs` 接入延迟队列、短信/语音真实回执、失败重试和运维告警。
+- 接入真实 OCR/ASR provider endpoint，并完善附件上传到对象存储后的 `input_uri` 生成。
+- 补充 AI 记忆纠偏衰减、过期提醒和批量重嵌入任务。
+- 为 `reminder_escalation_jobs` 增加短信/语音真实回执轮询、失败重试策略和运维告警。
 - 接入电商/本地生活/商旅真实联盟 API 与 CPS 结算后台。
 
 ## 环境变量
@@ -76,6 +78,7 @@ LIJI_DEFAULT_NOTIFY_PHONE=
 LIJI_ENABLE_EXTERNAL_NOTIFICATIONS=
 LIJI_CAPTURE_OCR_PROVIDER=
 LIJI_CAPTURE_ASR_PROVIDER=
+LIJI_CAPTURE_PROVIDER_ENDPOINT=
 ALIYUN_ACCESS_KEY_ID=
 ALIYUN_ACCESS_KEY_SECRET=
 ALIYUN_REGION_ID=
