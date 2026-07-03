@@ -53,12 +53,13 @@ npx playwright install chromium webkit
 - 运维闭环：Level 1 升级任务支持失败退避、最大尝试次数和 `ops_alerts` 告警；`/api/ai-memories/maintenance` 支持 AI 记忆衰减、过期复核和批量补 embedding。
 - 差旅报价：差旅方案支持交通/酒店候选报价、预算内择优、超预算提示和替代方案建议。
 - 记忆复核：AI 记忆支持用户编辑后复核为 healthy，云端复核会自动关闭对应 `ops_alerts`。
+- 通知对账：短信/语音日志保存阿里云 RequestId 与 BizId/CallId，`/api/notification-receipts/run` 可轮询回执并更新 provider 状态。
 
 ## 下一批待接真实服务
 
 - 接入真实 OCR/ASR provider endpoint，并完善附件上传到对象存储后的 `input_uri` 生成。
 - 增强 AI 记忆复核运营：批量复核、忽略/删除记忆、复核后重新 embedding。
-- 为短信/语音增加真实回执轮询和 provider request id 对账。
+- 增强通知回执：接入阿里云 HTTP/MNS 回执推送、多用户手机号路由和失败重呼策略。
 - 接入电商/本地生活/商旅真实联盟 API 的订单对账、结算回执和退款冲正。
 
 ## 环境变量
@@ -128,3 +129,8 @@ Supabase migration 位于 `supabase/migrations/20260701193000_initial_liji_schem
 AI 记忆复核 migration 位于 `supabase/migrations/20260703170000_ai_memory_review_ops.sql`，包含：
 
 - 用户可更新自己的 `ops_alerts`，用于 `/api/ai-memories/review` 在复核后关闭告警
+
+通知回执 migration 位于 `supabase/migrations/20260703183000_notification_receipts.sql`，包含：
+
+- `notification_logs` 的 provider、RequestId、BizId/CallId、回执状态和原始回执字段
+- 回执轮询所需索引

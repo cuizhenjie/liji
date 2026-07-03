@@ -176,6 +176,26 @@ function notificationStatus(value: string) {
   return "queued";
 }
 
+function notificationProvider(value: string) {
+  if (value === "web_push" || value === "aliyun_sms" || value === "aliyun_voice") {
+    return value;
+  }
+  return "mock";
+}
+
+function notificationProviderStatus(value: string) {
+  if (
+    value === "submitted" ||
+    value === "pending" ||
+    value === "delivered" ||
+    value === "failed" ||
+    value === "unknown"
+  ) {
+    return value;
+  }
+  return "not_applicable";
+}
+
 export function mapContact(row: DbRow): Contact {
   return {
     id: text(row, "id"),
@@ -296,6 +316,12 @@ export function mapNotificationLog(row: DbRow): NotificationLog {
     sentAt: text(row, "sent_at"),
     acknowledgedAt: optionalText(row, "acknowledged_at"),
     providerMessage: text(row, "provider_message"),
+    provider: notificationProvider(text(row, "provider", "mock")),
+    providerRequestId: optionalText(row, "provider_request_id"),
+    providerReceiptId: optionalText(row, "provider_receipt_id"),
+    providerStatus: notificationProviderStatus(text(row, "provider_status", "not_applicable")),
+    receiptCheckedAt: optionalText(row, "receipt_checked_at"),
+    rawProviderReceipt: jsonObject(row, "raw_provider_receipt", {}),
   };
 }
 

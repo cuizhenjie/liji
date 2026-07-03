@@ -1,6 +1,6 @@
 import { isBefore, parseISO } from "date-fns";
 
-import type { AliyunDeliveryResult } from "./aliyun";
+import type { AliyunDeliveryResult, AliyunReceiptResult } from "./aliyun";
 import { createUuid } from "./ids";
 import type { NotificationLog } from "./types";
 
@@ -60,6 +60,32 @@ export function mergeExternalDeliveryResults(
       ...log,
       status: result.status === "sent" ? "sent" as const : "failed" as const,
       providerMessage: result.providerMessage,
+      provider: result.provider,
+      providerRequestId: result.requestId,
+      providerReceiptId: result.receiptId,
+      providerStatus: result.providerStatus,
+    };
+  });
+}
+
+export function applyReceiptResultsToLogs(
+  logs: NotificationLog[],
+  receipts: AliyunReceiptResult[]
+): NotificationLog[] {
+  return logs.map((log) => {
+    const receipt = receipts.find((item) => item.logId === log.id);
+    if (!receipt) {
+      return log;
+    }
+
+    return {
+      ...log,
+      status: receipt.providerStatus === "failed" ? "failed" as const : log.status,
+      providerRequestId: receipt.requestId ?? log.providerRequestId,
+      providerStatus: receipt.providerStatus,
+      receiptCheckedAt: receipt.checkedAt,
+      rawProviderReceipt: receipt.rawResult,
+      providerMessage: receipt.providerMessage,
     };
   });
 }

@@ -174,6 +174,12 @@ function notificationLogRow(userId: string, log: NotificationLog) {
     sent_at: log.sentAt,
     acknowledged_at: log.acknowledgedAt,
     provider_message: log.providerMessage,
+    provider: log.provider,
+    provider_request_id: log.providerRequestId,
+    provider_receipt_id: log.providerReceiptId,
+    provider_status: log.providerStatus,
+    receipt_checked_at: log.receiptCheckedAt,
+    raw_provider_receipt: log.rawProviderReceipt,
   });
 }
 

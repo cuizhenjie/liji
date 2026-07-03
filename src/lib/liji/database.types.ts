@@ -165,6 +165,12 @@ export type Database = {
         sent_at: string;
         acknowledged_at: string | null;
         provider_message: string;
+        provider: "mock" | "web_push" | "aliyun_sms" | "aliyun_voice";
+        provider_request_id: string | null;
+        provider_receipt_id: string | null;
+        provider_status: "not_applicable" | "submitted" | "pending" | "delivered" | "failed" | "unknown";
+        receipt_checked_at: string | null;
+        raw_provider_receipt: Json;
         created_at: string;
       }>;
       ai_memories: Table<{

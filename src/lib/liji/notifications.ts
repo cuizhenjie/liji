@@ -31,6 +31,21 @@ function providerMessage(provider: NotificationProviderName, channel: Notificati
       : "Web Push 已发送或写入站内提醒。";
 }
 
+function logProvider(provider: NotificationProviderName, channel: NotificationLog["channel"]): NotificationLog["provider"] {
+  if (channel === "push") return "web_push";
+  if (provider === "aliyun" && channel === "sms") return "aliyun_sms";
+  if (provider === "aliyun" && channel === "voice") return "aliyun_voice";
+  return "mock";
+}
+
+function initialProviderStatus(provider: NotificationProviderName, channel: NotificationLog["channel"]): NotificationLog["providerStatus"] {
+  if (provider === "aliyun" && (channel === "sms" || channel === "voice")) {
+    return "submitted";
+  }
+
+  return "not_applicable";
+}
+
 export function selectNotificationProvider(
   env: Record<string, string | undefined> = process.env
 ): NotificationProviderName {
@@ -62,6 +77,8 @@ export function createNotificationDelivery(
       level: request.level,
       sentAt: now.toISOString(),
       providerMessage: providerMessage(provider, channel),
+      provider: logProvider(provider, channel),
+      providerStatus: initialProviderStatus(provider, channel),
     })),
   };
 }

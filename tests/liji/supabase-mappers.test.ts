@@ -5,6 +5,7 @@ import {
   mapCapture,
   mapContact,
   mapEvent,
+  mapNotificationLog,
   mapPlan,
   mapPrivacy,
 } from "../../src/lib/liji/supabase-mappers";
@@ -95,5 +96,28 @@ describe("Supabase mappers", () => {
     expect(privacy.cloudModelEnabled).toBe(false);
     expect(privacy.smsEnabled).toBe(false);
     expect(privacy.voiceCallEnabled).toBe(false);
+  });
+
+  it("maps notification provider receipt metadata", () => {
+    const log = mapNotificationLog({
+      id: "n-1",
+      title: "客户宴请",
+      channel: "sms",
+      status: "sent",
+      level: "level_1",
+      sent_at: "2026-07-01T00:00:00Z",
+      provider_message: "Aliyun SMS 回执：delivered",
+      provider: "aliyun_sms",
+      provider_request_id: "req-1",
+      provider_receipt_id: "biz-1",
+      provider_status: "delivered",
+      receipt_checked_at: "2026-07-01T00:05:00Z",
+      raw_provider_receipt: { SendStatus: 3 },
+    });
+
+    expect(log.provider).toBe("aliyun_sms");
+    expect(log.providerReceiptId).toBe("biz-1");
+    expect(log.providerStatus).toBe("delivered");
+    expect(log.rawProviderReceipt).toEqual({ SendStatus: 3 });
   });
 });

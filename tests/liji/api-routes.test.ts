@@ -22,6 +22,7 @@ import { POST as deletePrivacy } from "../../src/app/api/privacy/delete/route";
 import { GET as exportPrivacy } from "../../src/app/api/privacy/export/route";
 import { POST as savePrivacySettings } from "../../src/app/api/privacy/settings/route";
 import { POST as sendNotification } from "../../src/app/api/send-notification/route";
+import { POST as runNotificationReceipts } from "../../src/app/api/notification-receipts/run/route";
 import { POST as runReminderEscalations } from "../../src/app/api/reminder-escalations/run/route";
 import { GET as getWorkspace } from "../../src/app/api/workspace/route";
 import { POST as syncWorkspace } from "../../src/app/api/workspace/sync/route";
@@ -198,6 +199,8 @@ describe("productization API routes", () => {
     expect(payload.source).toBe("demo");
     expect(payload.channels).toEqual(["push", "sms", "voice"]);
     expect(payload.logs).toHaveLength(3);
+    expect(payload.logs[0].provider).toBe("web_push");
+    expect(payload.logs[1].providerStatus).toBe("not_applicable");
     expect(payload.escalationPlan.status).toBe("waiting_first_push");
     expect(payload.externalDelivery).toEqual([]);
     expect(payload.escalationJob.channels).toEqual(["sms", "voice"]);
@@ -276,6 +279,10 @@ describe("productization API routes", () => {
       jsonRequest("/api/reminder-escalations/run", { limit: 5 })
     );
     const escalationWorker = await escalationWorkerResponse.json();
+    const receiptWorkerResponse = await runNotificationReceipts(
+      jsonRequest("/api/notification-receipts/run", { limit: 5 })
+    );
+    const receiptWorker = await receiptWorkerResponse.json();
     const maintenanceResponse = await maintainAiMemories(
       jsonRequest("/api/ai-memories/maintenance", { limitUsers: 5, embedMissing: false })
     );
@@ -285,6 +292,7 @@ describe("productization API routes", () => {
     expect(compliance.profile.giftLimitCny).toBe(200);
     expect(captureWorker.source).toBe("demo");
     expect(escalationWorker.source).toBe("demo");
+    expect(receiptWorker.source).toBe("demo");
     expect(maintenance.source).toBe("demo");
     expect(maintenance.processed[0].reviews.length).toBeGreaterThan(0);
   });

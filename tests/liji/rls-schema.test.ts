@@ -26,6 +26,10 @@ const aiMemoryReviewOpsMigration = readFileSync(
   join(process.cwd(), "supabase/migrations/20260703170000_ai_memory_review_ops.sql"),
   "utf8"
 );
+const notificationReceiptsMigration = readFileSync(
+  join(process.cwd(), "supabase/migrations/20260703183000_notification_receipts.sql"),
+  "utf8"
+);
 
 describe("Supabase RLS migration", () => {
   it("enables RLS for sensitive user tables", () => {
@@ -92,5 +96,13 @@ describe("Supabase RLS migration", () => {
   it("allows users to resolve their own ops alerts after memory review", () => {
     expect(aiMemoryReviewOpsMigration).toContain("create policy \"ops alerts update own rows\"");
     expect(aiMemoryReviewOpsMigration).toContain("for update using (auth.uid() = user_id)");
+  });
+
+  it("adds notification provider receipt metadata", () => {
+    expect(notificationReceiptsMigration).toContain("add column if not exists provider text");
+    expect(notificationReceiptsMigration).toContain("provider_request_id text");
+    expect(notificationReceiptsMigration).toContain("provider_receipt_id text");
+    expect(notificationReceiptsMigration).toContain("receipt_checked_at timestamptz");
+    expect(notificationReceiptsMigration).toContain("idx_notification_logs_receipt_poll");
   });
 });

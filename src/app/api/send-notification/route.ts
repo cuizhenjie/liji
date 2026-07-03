@@ -6,6 +6,7 @@ import {
   createNotificationDelivery,
   filterNotificationLogsByPrivacy,
 } from "@/lib/liji/notifications";
+import { mergeExternalDeliveryResults } from "@/lib/liji/reminder-escalation-worker";
 import {
   createSupabaseServerClient,
   createSupabaseServiceClient,
@@ -44,6 +45,12 @@ function notificationLogRow(userId: string, log: NotificationLog) {
     sent_at: log.sentAt,
     acknowledged_at: log.acknowledgedAt,
     provider_message: log.providerMessage,
+    provider: log.provider,
+    provider_request_id: log.providerRequestId,
+    provider_receipt_id: log.providerReceiptId,
+    provider_status: log.providerStatus,
+    receipt_checked_at: log.receiptCheckedAt,
+    raw_provider_receipt: log.rawProviderReceipt,
   };
 }
 
@@ -103,7 +110,17 @@ export async function POST(request: Request) {
     }
 
     const privacy = mapPrivacy(privacyRow);
-    const logs = filterNotificationLogsByPrivacy(delivery.logs, privacy);
+    const baseLogs = filterNotificationLogsByPrivacy(delivery.logs, privacy);
+    const externalDelivery =
+      delivery.provider === "aliyun"
+        ? await sendAliyunNotifications({
+            logs: baseLogs,
+            title: body.title,
+            recipientPhone: body.recipientPhone,
+            templateParams: body.templateParams,
+          })
+        : [];
+    const logs = mergeExternalDeliveryResults(baseLogs, externalDelivery);
     const { error } = await supabase
       .from("notification_logs")
       .insert(logs.map((log) => notificationLogRow(data.user.id, log)));
@@ -183,16 +200,6 @@ export async function POST(request: Request) {
             });
           })
       : null;
-    const externalDelivery =
-      delivery.provider === "aliyun"
-        ? await sendAliyunNotifications({
-            logs,
-            title: body.title,
-            recipientPhone: body.recipientPhone,
-            templateParams: body.templateParams,
-          })
-        : [];
-
     return Response.json({
       provider: delivery.provider,
       title: body.title,

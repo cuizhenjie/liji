@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createEscalationOpsAlert,
   createEscalationDeliveryLogs,
+  applyReceiptResultsToLogs,
   isEscalationJobDue,
   mergeExternalDeliveryResults,
   planEscalationRetry,
@@ -38,15 +39,73 @@ describe("reminder escalation worker", () => {
   it("merges external provider delivery results into logs", () => {
     const logs = createEscalationDeliveryLogs(job);
     const merged = mergeExternalDeliveryResults(logs, [
-      { channel: "sms", status: "sent", providerMessage: "SMS sent" },
-      { channel: "voice", status: "failed", providerMessage: "Voice failed" },
+      {
+        channel: "sms",
+        status: "sent",
+        provider: "aliyun_sms",
+        providerStatus: "submitted",
+        requestId: "req-sms",
+        receiptId: "biz-1",
+        providerMessage: "SMS sent",
+      },
+      {
+        channel: "voice",
+        status: "failed",
+        provider: "aliyun_voice",
+        providerStatus: "failed",
+        requestId: "req-voice",
+        providerMessage: "Voice failed",
+      },
     ]);
 
     expect(merged.map((log) => log.status)).toEqual(["sent", "failed"]);
+    expect(merged[0].providerRequestId).toBe("req-sms");
+    expect(merged[0].providerReceiptId).toBe("biz-1");
     expect(summarizeEscalationJobStatus({ logs: merged, deliveries: [
-      { channel: "sms", status: "sent", providerMessage: "SMS sent" },
-      { channel: "voice", status: "failed", providerMessage: "Voice failed" },
+      {
+        channel: "sms",
+        status: "sent",
+        provider: "aliyun_sms",
+        providerStatus: "submitted",
+        providerMessage: "SMS sent",
+      },
+      {
+        channel: "voice",
+        status: "failed",
+        provider: "aliyun_voice",
+        providerStatus: "failed",
+        providerMessage: "Voice failed",
+      },
     ] }).status).toBe("due");
+  });
+
+  it("applies provider receipt polling results to logs", () => {
+    const logs = mergeExternalDeliveryResults(createEscalationDeliveryLogs(job), [
+      {
+        channel: "sms",
+        status: "sent",
+        provider: "aliyun_sms",
+        providerStatus: "submitted",
+        receiptId: "biz-1",
+        providerMessage: "SMS submitted",
+      },
+    ]);
+    const applied = applyReceiptResultsToLogs(logs, [
+      {
+        logId: logs[0].id,
+        channel: "sms",
+        status: "checked",
+        providerStatus: "delivered",
+        requestId: "receipt-1",
+        providerMessage: "Aliyun SMS 回执：delivered",
+        checkedAt: "2026-07-01T02:00:00.000Z",
+        rawResult: { SendStatus: 3 },
+      },
+    ]);
+
+    expect(applied[0].providerStatus).toBe("delivered");
+    expect(applied[0].receiptCheckedAt).toBe("2026-07-01T02:00:00.000Z");
+    expect(applied[0].rawProviderReceipt).toEqual({ SendStatus: 3 });
   });
 
   it("plans retry backoff and creates ops alerts when exhausted", () => {

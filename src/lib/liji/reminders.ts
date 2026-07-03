@@ -117,6 +117,8 @@ export function runReminderScan(
             : channel === "sms"
               ? "MockSMS 已发送，真实服务可替换为阿里云/腾讯云适配器。"
               : "Web Push 已发送或写入站内提醒。",
+        provider: channel === "push" ? "web_push" : "mock",
+        providerStatus: "not_applicable",
       }));
     });
 }

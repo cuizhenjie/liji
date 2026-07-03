@@ -170,6 +170,12 @@ export type NotificationLog = {
   sentAt: string;
   acknowledgedAt?: string;
   providerMessage: string;
+  provider?: "mock" | "web_push" | "aliyun_sms" | "aliyun_voice";
+  providerRequestId?: string;
+  providerReceiptId?: string;
+  providerStatus?: "not_applicable" | "submitted" | "pending" | "delivered" | "failed" | "unknown";
+  receiptCheckedAt?: string;
+  rawProviderReceipt?: Record<string, unknown>;
 };
 
 export type AiMemory = {
