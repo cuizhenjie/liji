@@ -51,13 +51,14 @@ npx playwright install chromium webkit
 - 后台 worker：`/api/capture/process-jobs` 可消费 OCR/ASR 队列并回写确认中心，`/api/reminder-escalations/run` 可消费 Level 1 升级队列并写入投递日志。
 - 动态合规：`/api/compliance/rules` 可返回系统/用户合规规则，并按联系人标签合成更严格的礼品和宴请限额。
 - 运维闭环：Level 1 升级任务支持失败退避、最大尝试次数和 `ops_alerts` 告警；`/api/ai-memories/maintenance` 支持 AI 记忆衰减、过期复核和批量补 embedding。
+- 采集附件：截图、语音、账单附件可上传到 Supabase Storage，生成短期 signed URL 写入 `input_uri` 供 OCR/ASR provider 拉取。
 - 差旅报价：差旅方案支持交通/酒店候选报价、预算内择优、超预算提示和替代方案建议。
 - 记忆复核：AI 记忆支持用户编辑后复核为 healthy，云端复核会自动关闭对应 `ops_alerts`。
 - 通知对账：短信/语音日志保存阿里云 RequestId 与 BizId/CallId，`/api/notification-receipts/run` 可轮询回执并更新 provider 状态。
 
 ## 下一批待接真实服务
 
-- 接入真实 OCR/ASR provider endpoint，并完善附件上传到对象存储后的 `input_uri` 生成。
+- 接入真实 OCR/ASR provider 账号、回调验签和失败重试运营。
 - 增强 AI 记忆复核运营：批量复核、忽略/删除记忆、复核后重新 embedding。
 - 增强通知回执：接入阿里云 HTTP/MNS 回执推送、多用户手机号路由和失败重呼策略。
 - 接入电商/本地生活/商旅真实联盟 API 的订单对账、结算回执和退款冲正。
@@ -83,6 +84,8 @@ LIJI_ENABLE_EXTERNAL_NOTIFICATIONS=
 LIJI_CAPTURE_OCR_PROVIDER=
 LIJI_CAPTURE_ASR_PROVIDER=
 LIJI_CAPTURE_PROVIDER_ENDPOINT=
+LIJI_CAPTURE_STORAGE_BUCKET=
+LIJI_CAPTURE_STORAGE_SIGNED_URL_TTL_SECONDS=
 ALIYUN_ACCESS_KEY_ID=
 ALIYUN_ACCESS_KEY_SECRET=
 ALIYUN_REGION_ID=
@@ -134,3 +137,8 @@ AI 记忆复核 migration 位于 `supabase/migrations/20260703170000_ai_memory_r
 
 - `notification_logs` 的 provider、RequestId、BizId/CallId、回执状态和原始回执字段
 - 回执轮询所需索引
+
+采集附件对象存储 migration 位于 `supabase/migrations/20260703193000_capture_storage_bucket.sql`，包含：
+
+- 私有 bucket `liji-capture-attachments`
+- 用户路径隔离的 `storage.objects` 读写策略

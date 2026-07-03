@@ -1,6 +1,7 @@
 export type IntegrationStatus = {
   provider:
     | "supabase"
+    | "supabase_storage"
     | "openai"
     | "openai_embedding"
     | "aliyun_sms"
@@ -50,6 +51,15 @@ export function getIntegrationStatuses(
       detail: hasSupabase ? "Auth、Postgres、RLS、Cron 落库可用。" : "未配置完整 Supabase 环境变量。",
     },
     {
+      provider: "supabase_storage",
+      label: "Supabase 对象存储",
+      category: "data",
+      mode: env.SUPABASE_SERVICE_ROLE_KEY ? "configured" : "missing",
+      detail: env.SUPABASE_SERVICE_ROLE_KEY
+        ? `采集附件可上传到 ${env.LIJI_CAPTURE_STORAGE_BUCKET ?? "liji-capture-attachments"} 并生成 signed URL。`
+        : "未配置服务端存储权限，附件仅能排队或使用外部 contentUri。",
+    },
+    {
       provider: "openai",
       label: "OpenAI 结构化解析",
       category: "ai",
@@ -88,15 +98,15 @@ export function getIntegrationStatuses(
       provider: "aliyun_ocr",
       label: "OCR 附件抽取",
       category: "ai",
-      mode: env.LIJI_CAPTURE_OCR_PROVIDER && env.LIJI_CAPTURE_PROVIDER_ENDPOINT ? "configured" : "missing",
-      detail: env.LIJI_CAPTURE_OCR_PROVIDER && env.LIJI_CAPTURE_PROVIDER_ENDPOINT ? "截图、账单附件会进入 OCR worker 并回写确认中心。" : "截图和账单附件仍需人工补文本或等待 worker endpoint。",
+      mode: env.LIJI_CAPTURE_OCR_PROVIDER && env.LIJI_CAPTURE_PROVIDER_ENDPOINT && env.SUPABASE_SERVICE_ROLE_KEY ? "configured" : "missing",
+      detail: env.LIJI_CAPTURE_OCR_PROVIDER && env.LIJI_CAPTURE_PROVIDER_ENDPOINT && env.SUPABASE_SERVICE_ROLE_KEY ? "截图、账单附件会上传对象存储，进入 OCR worker 并回写确认中心。" : "截图和账单附件仍需对象存储、provider endpoint 或人工补文本。",
     },
     {
       provider: "aliyun_asr",
       label: "ASR 语音抽取",
       category: "ai",
-      mode: env.LIJI_CAPTURE_ASR_PROVIDER && env.LIJI_CAPTURE_PROVIDER_ENDPOINT ? "configured" : "missing",
-      detail: env.LIJI_CAPTURE_ASR_PROVIDER && env.LIJI_CAPTURE_PROVIDER_ENDPOINT ? "语音附件会进入 ASR worker 并回写确认中心。" : "语音附件仍需人工补文本或等待 worker endpoint。",
+      mode: env.LIJI_CAPTURE_ASR_PROVIDER && env.LIJI_CAPTURE_PROVIDER_ENDPOINT && env.SUPABASE_SERVICE_ROLE_KEY ? "configured" : "missing",
+      detail: env.LIJI_CAPTURE_ASR_PROVIDER && env.LIJI_CAPTURE_PROVIDER_ENDPOINT && env.SUPABASE_SERVICE_ROLE_KEY ? "语音附件会上传对象存储，进入 ASR worker 并回写确认中心。" : "语音附件仍需对象存储、provider endpoint 或人工补文本。",
     },
     {
       provider: "jd",

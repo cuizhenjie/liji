@@ -29,6 +29,7 @@ export function getReadinessChecks(
 ): ReadinessCheck[] {
   const hasSupabasePublic = has(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
   const hasSupabaseService = has(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+  const captureStorageBucket = env.LIJI_CAPTURE_STORAGE_BUCKET ?? "liji-capture-attachments";
   const hasVapid = has(env.NEXT_PUBLIC_VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY, env.VAPID_SUBJECT);
   const hasAliyunBase = has(env.ALIYUN_ACCESS_KEY_ID, env.ALIYUN_ACCESS_KEY_SECRET);
   const hasAliyunSms = hasAliyunBase && has(env.ALIYUN_SMS_SIGN_NAME, env.ALIYUN_SMS_TEMPLATE_CODE, env.LIJI_DEFAULT_NOTIFY_PHONE);
@@ -111,6 +112,17 @@ export function getReadinessChecks(
       ok: has(env.LIJI_CAPTURE_PROVIDER_ENDPOINT),
       warn: true,
       detail: env.LIJI_CAPTURE_PROVIDER_ENDPOINT ? "采集抽取 worker 可调用外部 provider。" : "未配置 LIJI_CAPTURE_PROVIDER_ENDPOINT，抽取 job 会停留在队列中。",
+    }),
+    check({
+      id: "capture-storage",
+      label: "采集附件对象存储",
+      category: "data",
+      requiredForProduction: false,
+      ok: hasSupabaseService,
+      warn: true,
+      detail: hasSupabaseService
+        ? `采集附件会上传到 ${captureStorageBucket} 并生成短期 signed URL。`
+        : "未配置 Supabase service role，附件无法由服务端写入对象存储。",
     }),
     check({
       id: "web-push",

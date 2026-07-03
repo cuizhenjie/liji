@@ -42,6 +42,19 @@ describe("capture extraction worker", () => {
     expect(result.extractedText).toContain("周明");
   });
 
+  it("fails before provider call when input uri is missing", async () => {
+    const fetcher = vi.fn() as unknown as typeof fetch;
+    const result = await processCaptureExtractionJob({
+      job: { ...job, inputUri: undefined },
+      endpoint: "https://ocr.example.test/jobs",
+      fetcher,
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.errorMessage).toContain("inputUri");
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("fails when provider returns no text", async () => {
     const result = await processCaptureExtractionJob({
       job,

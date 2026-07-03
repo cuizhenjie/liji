@@ -62,6 +62,15 @@ export async function processCaptureExtractionJob(params: {
     };
   }
 
+  if (!params.job.inputUri) {
+    return {
+      jobId: params.job.id,
+      status: "failed",
+      errorMessage: "缺少 inputUri，OCR/ASR provider 无法拉取附件。",
+      rawResult: {},
+    };
+  }
+
   const fetcher = params.fetcher ?? fetch;
   try {
     const response = await fetcher(endpoint, {
