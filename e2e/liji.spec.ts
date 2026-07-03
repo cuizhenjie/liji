@@ -83,8 +83,10 @@ test("edits AI memory corrections", async ({ page }) => {
   const memoryEditor = page.getByLabel(/编辑记忆/).first();
   await expect(memoryEditor).toBeVisible();
   await memoryEditor.fill("周明不吃香菜，偏好安静包间，避免高度白酒。");
-  await page.getByRole("button", { name: /确认正确/ }).first().click();
+  await expect(page.getByText("待复核").first()).toBeVisible();
+  await page.getByRole("button", { name: /复核通过/ }).first().click();
 
-  await expect(page.getByText("AI 记忆已校准")).toBeVisible();
+  await expect(page.getByText("AI 记忆已复核")).toBeVisible();
+  await expect(page.getByText("已复核").first()).toBeVisible();
   await expect(memoryEditor).toHaveValue("周明不吃香菜，偏好安静包间，避免高度白酒。");
 });

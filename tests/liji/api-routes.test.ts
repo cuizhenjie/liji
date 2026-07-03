@@ -7,6 +7,7 @@ import { POST as processCaptureJobs } from "../../src/app/api/capture/process-jo
 import { GET as getComplianceRules } from "../../src/app/api/compliance/rules/route";
 import { POST as embedAiMemories } from "../../src/app/api/ai-memories/embed/route";
 import { POST as maintainAiMemories } from "../../src/app/api/ai-memories/maintenance/route";
+import { POST as reviewAiMemory } from "../../src/app/api/ai-memories/review/route";
 import { POST as fulfillmentCallback } from "../../src/app/api/fulfillment/callback/route";
 import { POST as clickFulfillment } from "../../src/app/api/fulfillment/click/route";
 import { POST as generatePlan } from "../../src/app/api/generate-plan/route";
@@ -212,6 +213,23 @@ describe("productization API routes", () => {
 
     expect(payload.source).toBe("demo");
     expect(payload.results[0].memory.content).toContain("周明");
+  });
+
+  it("reviews AI memories in demo mode", async () => {
+    const response = await reviewAiMemory(
+      jsonRequest("/api/ai-memories/review", {
+        memoryId: "m-1",
+        content: "周明不吃香菜，偏好安静包间。",
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload.source).toBe("demo");
+    expect(payload.persisted).toBe(false);
+    expect(payload.resolvedAlerts).toBe(0);
+    expect(payload.memory.reviewStatus).toBe("healthy");
+    expect(payload.memory.source).toBe("manual");
+    expect(payload.memory.correctedAt).toBeDefined();
   });
 
   it("does not embed AI memories in demo mode", async () => {

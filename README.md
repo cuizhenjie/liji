@@ -52,11 +52,12 @@ npx playwright install chromium webkit
 - 动态合规：`/api/compliance/rules` 可返回系统/用户合规规则，并按联系人标签合成更严格的礼品和宴请限额。
 - 运维闭环：Level 1 升级任务支持失败退避、最大尝试次数和 `ops_alerts` 告警；`/api/ai-memories/maintenance` 支持 AI 记忆衰减、过期复核和批量补 embedding。
 - 差旅报价：差旅方案支持交通/酒店候选报价、预算内择优、超预算提示和替代方案建议。
+- 记忆复核：AI 记忆支持用户编辑后复核为 healthy，云端复核会自动关闭对应 `ops_alerts`。
 
 ## 下一批待接真实服务
 
 - 接入真实 OCR/ASR provider endpoint，并完善附件上传到对象存储后的 `input_uri` 生成。
-- 补充 AI 记忆用户复核 UI 和复核后自动清理 `ops_alerts`。
+- 增强 AI 记忆复核运营：批量复核、忽略/删除记忆、复核后重新 embedding。
 - 为短信/语音增加真实回执轮询和 provider request id 对账。
 - 接入电商/本地生活/商旅真实联盟 API 的订单对账、结算回执和退款冲正。
 
@@ -123,3 +124,7 @@ Supabase migration 位于 `supabase/migrations/20260701193000_initial_liji_schem
 - `reminder_escalation_jobs` 重试/退避字段
 - `ai_memories` 复核、衰减和 embedding 时间字段
 - `ops_alerts` 运维告警表
+
+AI 记忆复核 migration 位于 `supabase/migrations/20260703170000_ai_memory_review_ops.sql`，包含：
+
+- 用户可更新自己的 `ops_alerts`，用于 `/api/ai-memories/review` 在复核后关闭告警

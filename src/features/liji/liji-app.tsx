@@ -88,6 +88,10 @@ import { buildPlanFulfillmentLinks } from "@/lib/liji/fulfillment";
 import { createUuid } from "@/lib/liji/ids";
 import type { IntegrationStatus } from "@/lib/liji/integrations";
 import {
+  applyReviewedAiMemory,
+  reviewWorkspaceAiMemory,
+} from "@/lib/liji/memory-review";
+import {
   clearWorkspaceData,
   loadWorkspaceData,
   saveWorkspaceData,
@@ -103,6 +107,7 @@ import {
   setPlanStatus,
 } from "@/lib/liji/workflow";
 import type {
+  AiMemory,
   CalendarEvent,
   CaptureItem,
   Contact,
@@ -184,6 +189,20 @@ function statusText(status: CaptureItem["status"] | FulfillmentPlan["status"]) {
     bookmarked: "已收藏",
   };
   return map[status] ?? status;
+}
+
+function memoryReviewText(memory: AiMemory) {
+  if (memory.reviewStatus === "stale") return "需复核";
+  if (memory.reviewStatus === "review_required") return "待复核";
+  if (memory.correctedAt) return "已复核";
+  if (memory.reviewStatus === "healthy") return "健康";
+  return `${Math.round(memory.confidence * 100)}%`;
+}
+
+function memoryReviewVariant(memory: AiMemory) {
+  if (memory.reviewStatus === "stale") return "destructive" as const;
+  if (memory.reviewStatus === "review_required") return "outline" as const;
+  return "secondary" as const;
 }
 
 async function postJson(path: string, body: unknown) {
@@ -786,19 +805,58 @@ export function LijiApp({ initialData }: LijiAppProps) {
   }
 
   function correctMemory(memoryId: string) {
-    workspace.setData((current) => ({
-      ...current,
-      aiMemories: current.aiMemories.map((memory) =>
-        memory.id === memoryId
-          ? { ...memory, confidence: 1, correctedAt: new Date().toISOString() }
-          : memory
-      ),
-      contacts: current.contacts.map((contact) => ({
-        ...contact,
-        aiMemoryHealth: Math.min(100, contact.aiMemoryHealth + 2),
-      })),
-    }));
-    toast.success("AI 记忆已校准");
+    const memory = data.aiMemories.find((item) => item.id === memoryId);
+    if (!memory?.content.trim()) {
+      toast.error("AI 记忆内容不能为空");
+      return;
+    }
+
+    startTransition(async () => {
+      try {
+        const response = await fetch("/api/ai-memories/review", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            memoryId,
+            content: memory.content,
+          }),
+        });
+        const result = (await response.json()) as {
+          memory?: AiMemory;
+          resolvedAlerts?: number;
+          error?: string;
+        };
+
+        if (!response.ok || !result.memory) {
+          toast.error(result.error ?? "AI 记忆复核失败");
+          return;
+        }
+
+        workspace.setData((current) => applyReviewedAiMemory(current, result.memory!));
+        toast.success(
+          result.resolvedAlerts && result.resolvedAlerts > 0
+            ? `AI 记忆已复核，已清理 ${result.resolvedAlerts} 条告警`
+            : "AI 记忆已复核"
+        );
+      } catch {
+        const reviewed = reviewWorkspaceAiMemory(data, memoryId, {
+          content: memory.content,
+          now: new Date(),
+        });
+        if (reviewed.memory) {
+          workspace.setData((current) =>
+            reviewWorkspaceAiMemory(current, memoryId, {
+              content: memory.content,
+              now: new Date(),
+            }).workspace
+          );
+          toast.success("AI 记忆已本地复核");
+          return;
+        }
+
+        toast.error("AI 记忆复核失败");
+      }
+    });
   }
 
   function updateMemoryContent(memoryId: string, content: string) {
@@ -806,13 +864,15 @@ export function LijiApp({ initialData }: LijiAppProps) {
       ...current,
       aiMemories: current.aiMemories.map((memory) =>
         memory.id === memoryId
-          ? { ...memory, content, confidence: 1, correctedAt: new Date().toISOString() }
+          ? {
+              ...memory,
+              content,
+              confidence: Math.min(memory.confidence, 0.99),
+              reviewStatus: "review_required",
+              correctedAt: undefined,
+            }
           : memory
       ),
-      contacts: current.contacts.map((contact) => ({
-        ...contact,
-        aiMemoryHealth: Math.min(100, contact.aiMemoryHealth + 1),
-      })),
     }));
   }
 
@@ -943,6 +1003,7 @@ export function LijiApp({ initialData }: LijiAppProps) {
                   onDeleteContact={deleteContact}
                   onCorrectMemory={correctMemory}
                   onUpdateMemory={updateMemoryContent}
+                  memoryReviewPending={isPending}
                 />
               )}
               {activeSection === "calendar" && (
@@ -1235,6 +1296,7 @@ function ContactsSection(props: {
   onDeleteContact: (id: string) => void;
   onCorrectMemory: (id: string) => void;
   onUpdateMemory: (id: string, content: string) => void;
+  memoryReviewPending: boolean;
 }) {
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -1297,12 +1359,21 @@ function ContactsSection(props: {
                     rows={3}
                   />
                   <div className="mt-3 flex items-center justify-between gap-3">
-                    <Badge variant={memory.correctedAt ? "secondary" : "outline"}>
-                      {memory.correctedAt ? "已校准" : `${Math.round(memory.confidence * 100)}%`}
+                    <Badge variant={memoryReviewVariant(memory)}>
+                      {memoryReviewText(memory)}
                     </Badge>
-                    <Button size="sm" variant="outline" onClick={() => props.onCorrectMemory(memory.id)}>
-                      <CheckIcon data-icon="inline-start" />
-                      确认正确
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => props.onCorrectMemory(memory.id)}
+                      disabled={props.memoryReviewPending}
+                    >
+                      {props.memoryReviewPending ? (
+                        <Loader2Icon data-icon="inline-start" />
+                      ) : (
+                        <CheckIcon data-icon="inline-start" />
+                      )}
+                      复核通过
                     </Button>
                   </div>
                 </div>

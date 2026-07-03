@@ -22,6 +22,10 @@ const memoryRetryOpsMigration = readFileSync(
   join(process.cwd(), "supabase/migrations/20260703150000_memory_retry_ops.sql"),
   "utf8"
 );
+const aiMemoryReviewOpsMigration = readFileSync(
+  join(process.cwd(), "supabase/migrations/20260703170000_ai_memory_review_ops.sql"),
+  "utf8"
+);
 
 describe("Supabase RLS migration", () => {
   it("enables RLS for sensitive user tables", () => {
@@ -83,5 +87,10 @@ describe("Supabase RLS migration", () => {
     expect(memoryRetryOpsMigration).toContain("alter table public.ops_alerts enable row level security");
     expect(memoryRetryOpsMigration).toContain("review_status");
     expect(memoryRetryOpsMigration).toContain("idx_ai_memories_review_status");
+  });
+
+  it("allows users to resolve their own ops alerts after memory review", () => {
+    expect(aiMemoryReviewOpsMigration).toContain("create policy \"ops alerts update own rows\"");
+    expect(aiMemoryReviewOpsMigration).toContain("for update using (auth.uid() = user_id)");
   });
 });
