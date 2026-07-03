@@ -127,6 +127,8 @@ type SectionId =
   | "finance"
   | "privacy";
 
+type PrivacyToggleKey = Exclude<keyof PrivacySettings, "notificationPhone">;
+
 type LijiAppProps = {
   initialData: WorkspaceData;
 };
@@ -637,14 +639,25 @@ export function LijiApp({ initialData }: LijiAppProps) {
     toast.error(result.reason);
   }
 
-  function togglePrivacy(key: keyof PrivacySettings) {
+  function savePrivacy(nextPrivacy: PrivacySettings) {
+    workspace.setPrivacy(() => nextPrivacy);
+    void postJson("/api/privacy/settings", nextPrivacy);
+  }
+
+  function togglePrivacy(key: PrivacyToggleKey) {
     const nextPrivacy = {
       ...data.privacy,
       [key]: !data.privacy[key],
     };
 
-    workspace.setPrivacy(() => nextPrivacy);
-    void postJson("/api/privacy/settings", nextPrivacy);
+    savePrivacy(nextPrivacy);
+  }
+
+  function updateNotificationPhone(value: string) {
+    savePrivacy({
+      ...data.privacy,
+      notificationPhone: value.trim() || undefined,
+    });
   }
 
   function exportData() {
@@ -1036,6 +1049,7 @@ export function LijiApp({ initialData }: LijiAppProps) {
                 <PrivacySection
                   data={data}
                   onToggle={togglePrivacy}
+                  onNotificationPhone={updateNotificationPhone}
                   onReset={workspace.resetWorkspace}
                   onExport={exportData}
                   onDeleteLocal={requestLocalDeletion}
@@ -1689,6 +1703,7 @@ function FinanceSection({
 function PrivacySection({
   data,
   onToggle,
+  onNotificationPhone,
   onReset,
   onExport,
   onDeleteLocal,
@@ -1702,7 +1717,8 @@ function PrivacySection({
   onSignOut,
 }: {
   data: WorkspaceData;
-  onToggle: (key: keyof PrivacySettings) => void;
+  onToggle: (key: PrivacyToggleKey) => void;
+  onNotificationPhone: (value: string) => void;
   onReset: () => void;
   onExport: () => void;
   onDeleteLocal: () => void;
@@ -1715,7 +1731,7 @@ function PrivacySection({
   onSendLoginLink: () => void;
   onSignOut: () => void;
 }) {
-  const rows: Array<{ key: keyof PrivacySettings; title: string; detail: string }> = [
+  const rows: Array<{ key: PrivacyToggleKey; title: string; detail: string }> = [
     { key: "piiMasking", title: "PII 脱敏", detail: "姓名、电话、地址、公司名替换为临时占位符。" },
     { key: "cloudModelEnabled", title: "公网模型调用", detail: "关闭时仅使用本地规则和 mock provider。" },
     { key: "webPushEnabled", title: "Web Push", detail: "PWA 安装后可接收浏览器推送。" },
@@ -1809,6 +1825,23 @@ function PrivacySection({
                   <div className="mt-1 text-xs leading-5 text-muted-foreground">{integration.detail}</div>
                 </div>
               ))}
+            </div>
+          </div>
+
+          <div className="rounded-lg border p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <div className="min-w-0 flex-1">
+                <div className="font-medium">通知手机号</div>
+                <div className="mt-1 text-sm text-muted-foreground">短信和语音升级会优先投递到该号码。</div>
+              </div>
+              <Input
+                aria-label="通知手机号"
+                className="lg:max-w-64"
+                inputMode="tel"
+                onChange={(event) => onNotificationPhone(event.target.value)}
+                placeholder="13800000000"
+                value={data.privacy.notificationPhone ?? ""}
+              />
             </div>
           </div>
 

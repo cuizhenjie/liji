@@ -35,6 +35,7 @@ export function getReadinessChecks(
   const hasAliyunSms = hasAliyunBase && has(env.ALIYUN_SMS_SIGN_NAME, env.ALIYUN_SMS_TEMPLATE_CODE, env.LIJI_DEFAULT_NOTIFY_PHONE);
   const hasAliyunVoice = hasAliyunBase && has(env.ALIYUN_VOICE_CALLED_SHOW_NUMBER, env.ALIYUN_VOICE_TTS_CODE, env.LIJI_DEFAULT_NOTIFY_PHONE);
   const externalNotificationsEnabled = env.LIJI_ENABLE_EXTERNAL_NOTIFICATIONS === "true";
+  const hasNotificationReceiptPush = hasSupabaseService && has(env.LIJI_NOTIFICATION_RECEIPT_CALLBACK_SECRET);
   const hasAnyCpsProvider = [
     env.JD_UNION_ID,
     env.TAOBAO_PID,
@@ -157,6 +158,17 @@ export function getReadinessChecks(
       requiredForProduction: true,
       ok: externalNotificationsEnabled,
       detail: externalNotificationsEnabled ? "外部短信/语音允许真实下发。" : "LIJI_ENABLE_EXTERNAL_NOTIFICATIONS 未开启，外部短信/语音不会真实发送。",
+    }),
+    check({
+      id: "notification-receipt-push",
+      label: "通知回执推送入口",
+      category: "notification",
+      requiredForProduction: false,
+      ok: hasNotificationReceiptPush,
+      warn: true,
+      detail: hasNotificationReceiptPush
+        ? "阿里云 SMS/Voice HTTP/MNS 回执可验签并更新投递日志。"
+        : "未配置回执推送密钥或 Supabase service role，HTTP/MNS 回执只能 demo 接收。",
     }),
     check({
       id: "fulfillment-callback-secret",

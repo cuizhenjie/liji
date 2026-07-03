@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createNotificationDelivery,
   filterNotificationLogsByPrivacy,
+  resolveNotificationRecipientPhone,
   selectNotificationProvider,
 } from "../../src/lib/liji/notifications";
 
@@ -56,5 +57,16 @@ describe("notification provider adapter", () => {
     });
 
     expect(logs.map((log) => log.channel)).toEqual(["push"]);
+  });
+
+  it("routes notifications to the user privacy phone before global fallback", () => {
+    expect(resolveNotificationRecipientPhone(
+      { notificationPhone: "13800000000" },
+      "13900000000"
+    )).toBe("13800000000");
+    expect(resolveNotificationRecipientPhone(
+      { notificationPhone: "" },
+      "13900000000"
+    )).toBe("13900000000");
   });
 });

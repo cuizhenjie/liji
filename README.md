@@ -55,12 +55,14 @@ npx playwright install chromium webkit
 - 差旅报价：差旅方案支持交通/酒店候选报价、预算内择优、超预算提示和替代方案建议。
 - 记忆复核：AI 记忆支持用户编辑后复核为 healthy，云端复核会自动关闭对应 `ops_alerts`。
 - 通知对账：短信/语音日志保存阿里云 RequestId 与 BizId/CallId，`/api/notification-receipts/run` 可轮询回执并更新 provider 状态。
+- 回执推送：`/api/notification-receipts/push` 可接收阿里云 SMS HTTP 批量推送、MNS 消费转发和 VoiceReport，按 BizId/CallId 幂等更新投递日志。
+- 手机号路由：隐私中心可保存用户级通知手机号，短信/语音发送、Level 1 升级和回执轮询优先按用户手机号路由。
 
 ## 下一批待接真实服务
 
 - 接入真实 OCR/ASR provider 账号、回调验签和失败重试运营。
 - 增强 AI 记忆复核运营：批量复核、忽略/删除记忆、复核后重新 embedding。
-- 增强通知回执：接入阿里云 HTTP/MNS 回执推送、多用户手机号路由和失败重呼策略。
+- 增强通知回执：完善失败重呼策略、投递异常运营告警面板和多渠道退订/停呼策略。
 - 接入电商/本地生活/商旅真实联盟 API 的订单对账、结算回执和退款冲正。
 
 ## 环境变量
@@ -81,6 +83,7 @@ OPENAI_EMBEDDING_DIMENSIONS=
 CRON_SECRET=
 LIJI_DEFAULT_NOTIFY_PHONE=
 LIJI_ENABLE_EXTERNAL_NOTIFICATIONS=
+LIJI_NOTIFICATION_RECEIPT_CALLBACK_SECRET=
 LIJI_CAPTURE_OCR_PROVIDER=
 LIJI_CAPTURE_ASR_PROVIDER=
 LIJI_CAPTURE_PROVIDER_ENDPOINT=
@@ -142,3 +145,8 @@ AI 记忆复核 migration 位于 `supabase/migrations/20260703170000_ai_memory_r
 
 - 私有 bucket `liji-capture-attachments`
 - 用户路径隔离的 `storage.objects` 读写策略
+
+通知手机号路由 migration 位于 `supabase/migrations/20260703202000_notification_phone_routing.sql`，包含：
+
+- `privacy_settings.notification_phone`
+- 用户级短信/语音手机号长度约束

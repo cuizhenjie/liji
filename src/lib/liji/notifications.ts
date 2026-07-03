@@ -94,6 +94,13 @@ export function filterNotificationLogsByPrivacy(
   });
 }
 
+export function resolveNotificationRecipientPhone(
+  privacy: Pick<PrivacySettings, "notificationPhone">,
+  fallbackPhone?: string
+) {
+  return privacy.notificationPhone?.trim() || fallbackPhone;
+}
+
 export function createNotificationDeliveryForEvent(event: CalendarEvent, now = new Date("2026-07-01T09:00:00+08:00")) {
   return createNotificationDelivery({
     eventId: event.id,

@@ -199,6 +199,7 @@ export type PrivacySettings = {
   smsEnabled: boolean;
   voiceCallEnabled: boolean;
   thirdPartyLinksEnabled: boolean;
+  notificationPhone?: string;
 };
 
 export type MonthlyInsight = {

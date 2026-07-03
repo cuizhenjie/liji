@@ -1,11 +1,15 @@
 import { z } from "zod";
 
-import { queryAliyunNotificationReceipts } from "@/lib/liji/aliyun";
+import {
+  queryAliyunNotificationReceipts,
+  type AliyunReceiptResult,
+} from "@/lib/liji/aliyun";
 import { isCronAuthorized, unauthorizedCronResponse } from "@/lib/liji/cron";
 import type { Json } from "@/lib/liji/database.types";
+import { resolveNotificationRecipientPhone } from "@/lib/liji/notifications";
 import { createSupabaseServiceClient } from "@/lib/liji/supabase-server";
-import { mapNotificationLog } from "@/lib/liji/supabase-mappers";
-import type { NotificationLog } from "@/lib/liji/types";
+import { mapNotificationLog, mapPrivacy } from "@/lib/liji/supabase-mappers";
+import type { NotificationLog, PrivacySettings } from "@/lib/liji/types";
 
 const requestSchema = z.object({
   limit: z.number().int().min(1).max(100).default(50),
@@ -38,8 +42,9 @@ async function runSupabaseReceiptPolling(params: {
   if (!client) {
     return null;
   }
+  const serviceClient = client;
 
-  const { data, error } = await client
+  const { data, error } = await serviceClient
     .from("notification_logs")
     .select("*")
     .in("provider", ["aliyun_sms", "aliyun_voice"])
@@ -53,11 +58,40 @@ async function runSupabaseReceiptPolling(params: {
   }
 
   const rows = (data ?? []) as Array<Record<string, unknown>>;
-  const logs = rows.map(mapNotificationLog);
-  const receipts = await queryAliyunNotificationReceipts({
-    logs,
-    recipientPhone: params.recipientPhone,
-  });
+  const privacyCache = new Map<string, PrivacySettings>();
+  async function privacyForUser(userId: string) {
+    const cached = privacyCache.get(userId);
+    if (cached) {
+      return cached;
+    }
+
+    const { data: privacyRow, error: privacyError } = await serviceClient
+      .from("privacy_settings")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (privacyError) {
+      throw new Error(privacyError.message);
+    }
+
+    const privacy = mapPrivacy(privacyRow);
+    privacyCache.set(userId, privacy);
+    return privacy;
+  }
+
+  const receipts: AliyunReceiptResult[] = [];
+  for (const row of rows) {
+    const userId = typeof row.user_id === "string" ? row.user_id : "";
+    const privacy = userId ? await privacyForUser(userId) : null;
+    const recipientPhone = params.recipientPhone ??
+      (privacy ? resolveNotificationRecipientPhone(privacy) : undefined);
+    receipts.push(
+      ...(await queryAliyunNotificationReceipts({
+        logs: [mapNotificationLog(row)],
+        recipientPhone,
+      }))
+    );
+  }
   const rowsById = new Map(rows.map((row) => [String(row.id), row]));
   const processed = [];
 

@@ -355,6 +355,7 @@ export function mapPrivacy(row: DbRow | null | undefined): PrivacySettings {
       smsEnabled: false,
       voiceCallEnabled: false,
       thirdPartyLinksEnabled: true,
+      notificationPhone: undefined,
     };
   }
 
@@ -365,5 +366,6 @@ export function mapPrivacy(row: DbRow | null | undefined): PrivacySettings {
     smsEnabled: booleanValue(row, "sms_enabled", false),
     voiceCallEnabled: booleanValue(row, "voice_call_enabled", false),
     thirdPartyLinksEnabled: booleanValue(row, "third_party_links_enabled", true),
+    notificationPhone: optionalText(row, "notification_phone"),
   };
 }

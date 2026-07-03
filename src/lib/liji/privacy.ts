@@ -59,6 +59,10 @@ export function redactWorkspaceData(data: WorkspaceData): WorkspaceData {
       ...memory,
       content: "[AI_MEMORY]",
     })),
+    privacy: {
+      ...data.privacy,
+      notificationPhone: data.privacy.notificationPhone ? "[PHONE]" : undefined,
+    },
   };
 }
 

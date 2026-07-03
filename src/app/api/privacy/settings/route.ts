@@ -11,6 +11,7 @@ const privacySchema = z.object({
   smsEnabled: z.boolean(),
   voiceCallEnabled: z.boolean(),
   thirdPartyLinksEnabled: z.boolean(),
+  notificationPhone: z.string().max(32).optional(),
 });
 
 export async function POST(request: Request) {

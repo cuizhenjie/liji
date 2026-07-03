@@ -22,6 +22,7 @@ describe("privacy operations", () => {
 
     expect(redacted.contacts[0].name).toBe("[NAME]");
     expect(redacted.aiMemories[0].content).toBe("[AI_MEMORY]");
+    expect(redacted.privacy.notificationPhone).toBe("[PHONE]");
     expect(deletion.status).toBe("queued");
   });
 

@@ -120,6 +120,7 @@ describe("WorkspaceRepository", () => {
     );
 
     expect(calls.map((call) => call.table)).toEqual(["privacy_settings"]);
+    expect(calls[0].rows).toMatchObject({ notification_phone: "13800000000" });
     expect(result.tables.contacts).toBe(0);
   });
 });

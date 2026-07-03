@@ -333,6 +333,7 @@ export class SupabaseWorkspaceRepository implements WorkspaceRepository {
       sms_enabled: privacy.smsEnabled,
       voice_call_enabled: privacy.voiceCallEnabled,
       third_party_links_enabled: privacy.thirdPartyLinksEnabled,
+      notification_phone: privacy.notificationPhone?.trim() || null,
       updated_at: new Date().toISOString(),
     });
 

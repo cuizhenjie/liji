@@ -5,6 +5,7 @@ import { sendAliyunNotifications } from "@/lib/liji/aliyun";
 import {
   createNotificationDelivery,
   filterNotificationLogsByPrivacy,
+  resolveNotificationRecipientPhone,
 } from "@/lib/liji/notifications";
 import { mergeExternalDeliveryResults } from "@/lib/liji/reminder-escalation-worker";
 import {
@@ -116,7 +117,7 @@ export async function POST(request: Request) {
         ? await sendAliyunNotifications({
             logs: baseLogs,
             title: body.title,
-            recipientPhone: body.recipientPhone,
+            recipientPhone: body.recipientPhone ?? resolveNotificationRecipientPhone(privacy),
             templateParams: body.templateParams,
           })
         : [];

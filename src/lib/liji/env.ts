@@ -13,6 +13,7 @@ const envSchema = z.object({
   CRON_SECRET: z.string().min(1).optional(),
   LIJI_DEFAULT_NOTIFY_PHONE: z.string().min(1).optional(),
   LIJI_ENABLE_EXTERNAL_NOTIFICATIONS: z.string().optional(),
+  LIJI_NOTIFICATION_RECEIPT_CALLBACK_SECRET: z.string().min(1).optional(),
   LIJI_CAPTURE_OCR_PROVIDER: z.string().min(1).optional(),
   LIJI_CAPTURE_ASR_PROVIDER: z.string().min(1).optional(),
   LIJI_CAPTURE_PROVIDER_ENDPOINT: z.string().url().optional(),

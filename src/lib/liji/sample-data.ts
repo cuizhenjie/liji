@@ -195,6 +195,7 @@ export const demoWorkspace: WorkspaceData = {
     smsEnabled: true,
     voiceCallEnabled: false,
     thirdPartyLinksEnabled: true,
+    notificationPhone: "13800000000",
   },
   insight: generateMonthlyInsight({
     period: "2026-06",

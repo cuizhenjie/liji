@@ -96,6 +96,21 @@ describe("Supabase mappers", () => {
     expect(privacy.cloudModelEnabled).toBe(false);
     expect(privacy.smsEnabled).toBe(false);
     expect(privacy.voiceCallEnabled).toBe(false);
+    expect(privacy.notificationPhone).toBeUndefined();
+  });
+
+  it("maps user notification phone routing from privacy settings", () => {
+    const privacy = mapPrivacy({
+      pii_masking: true,
+      cloud_model_enabled: false,
+      web_push_enabled: true,
+      sms_enabled: true,
+      voice_call_enabled: true,
+      third_party_links_enabled: true,
+      notification_phone: "13800000000",
+    });
+
+    expect(privacy.notificationPhone).toBe("13800000000");
   });
 
   it("maps notification provider receipt metadata", () => {

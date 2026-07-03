@@ -3,7 +3,10 @@ import { z } from "zod";
 import { sendAliyunNotifications } from "@/lib/liji/aliyun";
 import { isCronAuthorized, unauthorizedCronResponse } from "@/lib/liji/cron";
 import type { Json } from "@/lib/liji/database.types";
-import { filterNotificationLogsByPrivacy } from "@/lib/liji/notifications";
+import {
+  filterNotificationLogsByPrivacy,
+  resolveNotificationRecipientPhone,
+} from "@/lib/liji/notifications";
 import {
   createEscalationOpsAlert,
   createEscalationDeliveryLogs,
@@ -172,6 +175,7 @@ async function runSupabaseEscalationJobs(limit: number) {
     const deliveries = await sendAliyunNotifications({
       logs: allowedLogs,
       title: job.title,
+      recipientPhone: resolveNotificationRecipientPhone(privacy),
       templateParams: { title: job.title },
     });
     const logs = mergeExternalDeliveryResults(allowedLogs, deliveries);

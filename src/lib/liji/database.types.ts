@@ -195,6 +195,7 @@ export type Database = {
         sms_enabled: boolean;
         voice_call_enabled: boolean;
         third_party_links_enabled: boolean;
+        notification_phone: string | null;
         updated_at: string;
       }>;
       web_push_subscriptions: Table<{

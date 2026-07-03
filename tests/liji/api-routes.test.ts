@@ -22,6 +22,7 @@ import { POST as deletePrivacy } from "../../src/app/api/privacy/delete/route";
 import { GET as exportPrivacy } from "../../src/app/api/privacy/export/route";
 import { POST as savePrivacySettings } from "../../src/app/api/privacy/settings/route";
 import { POST as sendNotification } from "../../src/app/api/send-notification/route";
+import { POST as pushNotificationReceipts } from "../../src/app/api/notification-receipts/push/route";
 import { POST as runNotificationReceipts } from "../../src/app/api/notification-receipts/run/route";
 import { POST as runReminderEscalations } from "../../src/app/api/reminder-escalations/run/route";
 import { GET as getWorkspace } from "../../src/app/api/workspace/route";
@@ -91,6 +92,7 @@ describe("productization API routes", () => {
         smsEnabled: false,
         voiceCallEnabled: false,
         thirdPartyLinksEnabled: true,
+        notificationPhone: "13800000000",
       })
     );
     const privacy = await privacyResponse.json();
@@ -103,6 +105,7 @@ describe("productization API routes", () => {
     expect(deletedContact.source).toBe("demo");
     expect(privacy.source).toBe("demo");
     expect(privacy.privacy.piiMasking).toBe(true);
+    expect(privacy.privacy.notificationPhone).toBe("13800000000");
   });
 
   it("accepts workspace sync payloads in demo mode", async () => {
@@ -204,6 +207,25 @@ describe("productization API routes", () => {
     expect(payload.escalationPlan.status).toBe("waiting_first_push");
     expect(payload.externalDelivery).toEqual([]);
     expect(payload.escalationJob.channels).toEqual(["sms", "voice"]);
+  });
+
+  it("accepts Aliyun HTTP batch notification receipts in demo mode", async () => {
+    const response = await pushNotificationReceipts(
+      jsonRequest("/api/notification-receipts/push", [
+        {
+          phone_number: "13811110000",
+          success: true,
+          err_code: "DELIVERED",
+          biz_id: "biz-1",
+        },
+      ])
+    );
+    const payload = await response.json();
+
+    expect(payload.code).toBe(0);
+    expect(payload.source).toBe("demo");
+    expect(payload.accepted).toBe(1);
+    expect(payload.processed[0].providerStatus).toBe("delivered");
   });
 
   it("searches AI memories in demo mode", async () => {

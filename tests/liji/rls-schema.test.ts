@@ -34,6 +34,10 @@ const captureStorageMigration = readFileSync(
   join(process.cwd(), "supabase/migrations/20260703193000_capture_storage_bucket.sql"),
   "utf8"
 );
+const notificationPhoneRoutingMigration = readFileSync(
+  join(process.cwd(), "supabase/migrations/20260703202000_notification_phone_routing.sql"),
+  "utf8"
+);
 
 describe("Supabase RLS migration", () => {
   it("enables RLS for sensitive user tables", () => {
@@ -115,5 +119,11 @@ describe("Supabase RLS migration", () => {
     expect(captureStorageMigration).toContain("'liji-capture-attachments'");
     expect(captureStorageMigration).toContain("capture attachments own object insert");
     expect(captureStorageMigration).toContain("auth.uid()::text = (storage.foldername(name))[1]");
+  });
+
+  it("adds user-scoped notification phone routing metadata", () => {
+    expect(notificationPhoneRoutingMigration).toContain("alter table public.privacy_settings");
+    expect(notificationPhoneRoutingMigration).toContain("add column if not exists notification_phone text");
+    expect(notificationPhoneRoutingMigration).toContain("privacy_settings_notification_phone_length");
   });
 });

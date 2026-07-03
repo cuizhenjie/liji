@@ -6,6 +6,7 @@ export type IntegrationStatus = {
     | "openai_embedding"
     | "aliyun_sms"
     | "aliyun_voice"
+    | "aliyun_receipts"
     | "aliyun_ocr"
     | "aliyun_asr"
     | "jd"
@@ -40,6 +41,9 @@ export function getIntegrationStatuses(
       env.ALIYUN_VOICE_CALLED_SHOW_NUMBER &&
       env.ALIYUN_VOICE_TTS_CODE &&
       env.LIJI_DEFAULT_NOTIFY_PHONE
+  );
+  const hasAliyunReceipts = Boolean(
+    env.SUPABASE_SERVICE_ROLE_KEY && env.LIJI_NOTIFICATION_RECEIPT_CALLBACK_SECRET
   );
 
   return [
@@ -93,6 +97,15 @@ export function getIntegrationStatuses(
       category: "notification",
       mode: hasAliyunVoice ? "configured" : "missing",
       detail: hasAliyunVoice ? "语音 API 配置完整，可在外部通知开关开启后下发。" : "MVP 将使用 mock voice。",
+    },
+    {
+      provider: "aliyun_receipts",
+      label: "阿里云回执推送",
+      category: "notification",
+      mode: hasAliyunReceipts ? "configured" : "missing",
+      detail: hasAliyunReceipts
+        ? "SMS/Voice HTTP/MNS 回执可验签并更新投递日志。"
+        : "未配置回执推送密钥或服务端落库权限，仍可用轮询或 demo 接收。",
     },
     {
       provider: "aliyun_ocr",
