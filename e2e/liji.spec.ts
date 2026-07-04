@@ -85,8 +85,13 @@ test("shows operations readiness and high ROI controls", async ({ page }) => {
   await expect(page.getByRole("button", { name: /真实服务 dry-run/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /履约差异队列/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /原生采集桥/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /权益扣减流水/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /CPS 财务审批/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /告警处置日志/ })).toBeVisible();
   await expect(page.getByText("P0 上线动作")).toBeVisible();
   await expect(page.getByText("通知 SOP 与权益")).toBeVisible();
+  await expect(page.getByText("P2 商业化闭环")).toBeVisible();
+  await expect(page.getByText("运营告警处置")).toBeVisible();
 
   await page.getByRole("button", { name: /真实服务 dry-run/ }).click();
   await expect(page.getByText("真实服务 dry-run 压测完成")).toBeVisible();

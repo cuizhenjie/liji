@@ -23,6 +23,9 @@ const recommendedEnv = [
   "LIJI_NOTIFICATION_RECEIPT_CALLBACK_SECRET",
   "LIJI_NATIVE_BRIDGE_SECRET",
   "LIJI_BILLING_PLAN",
+  "LIJI_BILLING_PROVIDER",
+  "LIJI_BILLING_CHECKOUT_URL",
+  "LIJI_INVOICE_PROVIDER",
 ];
 
 const migrations = [
@@ -32,6 +35,7 @@ const migrations = [
   "20260703193000_capture_storage_bucket.sql",
   "20260703222000_fulfillment_settlement_reconciliation.sql",
   "20260703233000_notification_retry_ops.sql",
+  "20260704110000_p2_commercial_ops.sql",
 ];
 
 function hasEnv(key) {

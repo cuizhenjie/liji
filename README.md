@@ -76,6 +76,9 @@ npx playwright install chromium webkit
 - 原生采集桥：`/api/capture/native-bridge` 暴露短信读取、长按录音、附件上传进度和 PWA 降级能力状态，并校验原生侧 payload。
 - 商业化权益：`/api/billing/entitlements` 计算体验版/专业版/高管版的关系画像、AI 记忆、短信、语音、紧急升级和履约对账额度占用。
 - 运营页增强：运营台展示生产阻塞、dry-run 告警、履约差异、会员权益、通知错误码 SOP 和原生采集桥状态。
+- P2 商业化闭环：`/api/billing/ledger` 生成权益扣减流水，`/api/billing/checkout` 生成订阅 checkout intent，`/api/billing/invoices` 生成发票申请队列。
+- CPS 财务审批：`/api/finance/cps-approvals` 将履约对账风险转成佣金审批、补证据和付款批次。
+- 运营告警处置：`/api/ops/alerts` 汇总生产、dry-run、权益、履约差异告警，支持确认、解决和重新打开的处置状态。
 
 ## 下一批待接真实服务
 
@@ -83,7 +86,7 @@ npx playwright install chromium webkit
 - 配置京东/淘宝/美团/携程/同程真实订单 API、签名密钥和结算周期，并用履约差异队列做人工审批。
 - 接真实通知压测：配置阿里云正式模板/签名/回执推送，补充供应商错误码样本库和运营处理 SOP。
 - 原生端增强：接入真实移动端短信读取权限、长按录音和附件上传进度回调。
-- 商业化闭环：接真实订阅支付、发票、权益扣减流水和 CPS 财务审批流。
+- 商业化闭环：接真实订阅支付回调、发票 provider、权益扣减落库 worker 和 CPS 财务审批通知。
 
 ## 环境变量
 
@@ -109,6 +112,9 @@ LIJI_NOTIFICATION_RECEIPT_CALLBACK_SECRET=
 LIJI_PUBLIC_APP_URL=
 LIJI_NATIVE_BRIDGE_SECRET=
 LIJI_BILLING_PLAN=
+LIJI_BILLING_PROVIDER=
+LIJI_BILLING_CHECKOUT_URL=
+LIJI_INVOICE_PROVIDER=
 LIJI_CAPTURE_OCR_PROVIDER=
 LIJI_CAPTURE_ASR_PROVIDER=
 LIJI_CAPTURE_PROVIDER_ENDPOINT=
@@ -204,3 +210,9 @@ OCR/ASR provider 回调 migration 位于 `supabase/migrations/20260703212000_cap
 
 - `notification_logs` 的父重试日志、重试次数、下次重试、停呼时间和停呼原因字段
 - 失败通知重试扫描索引与重试父子链路索引
+
+P2 商业化与运营 migration 位于 `supabase/migrations/20260704110000_p2_commercial_ops.sql`，包含：
+
+- `billing_subscriptions`、`billing_usage_ledger`、`billing_invoice_requests`
+- `cps_finance_approvals` 与 `ops_alert_events`
+- 用户级 RLS、账期/状态查询索引和告警事件审计索引

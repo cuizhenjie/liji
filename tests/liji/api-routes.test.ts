@@ -3,7 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DELETE as deleteContact, POST as saveContact } from "../../src/app/api/contacts/route";
 import { GET as authCallback } from "../../src/app/auth/callback/route";
 import { POST as batchAiMemories } from "../../src/app/api/ai-memories/batch/route";
+import { POST as createCheckout } from "../../src/app/api/billing/checkout/route";
 import { GET as getEntitlements } from "../../src/app/api/billing/entitlements/route";
+import { POST as createInvoice } from "../../src/app/api/billing/invoices/route";
+import { GET as getBillingLedger } from "../../src/app/api/billing/ledger/route";
 import { POST as extractCapture } from "../../src/app/api/capture/extract/route";
 import { POST as manualCompleteCapture } from "../../src/app/api/capture/manual-complete/route";
 import { GET as getNativeBridge, POST as validateNativeBridge } from "../../src/app/api/capture/native-bridge/route";
@@ -21,6 +24,7 @@ import { GET as getFulfillmentDiscrepancies, POST as resolveFulfillmentDiscrepan
 import { GET as exportFulfillment } from "../../src/app/api/fulfillment/export/route";
 import { POST as providerSyncFulfillment } from "../../src/app/api/fulfillment/provider-sync/route";
 import { POST as reconcileFulfillment } from "../../src/app/api/fulfillment/reconcile/route";
+import { GET as getCpsApprovals, POST as updateCpsApproval } from "../../src/app/api/finance/cps-approvals/route";
 import { POST as generatePlan } from "../../src/app/api/generate-plan/route";
 import { GET as getHealth } from "../../src/app/api/health/route";
 import { POST as searchAiMemories } from "../../src/app/api/ai-memories/search/route";
@@ -28,6 +32,7 @@ import { GET as getIntegrations } from "../../src/app/api/integrations/route";
 import { GET as getMonthlyInsight } from "../../src/app/api/monthly-insight/route";
 import { GET as getMonthlyReport } from "../../src/app/api/monthly-report/route";
 import { GET as getNotificationCodebook } from "../../src/app/api/notifications/codebook/route";
+import { GET as getOpsAlerts, POST as updateOpsAlert } from "../../src/app/api/ops/alerts/route";
 import { GET as getProductionCheck } from "../../src/app/api/ops/production-check/route";
 import { GET as getServiceSmoke, POST as runServiceSmoke } from "../../src/app/api/ops/service-smoke/route";
 import { POST as parseInput } from "../../src/app/api/parse-input/route";
@@ -357,6 +362,44 @@ describe("productization API routes", () => {
       new Request("http://localhost/api/billing/entitlements?planId=free")
     );
     const entitlements = await entitlementsResponse.json();
+    const ledgerResponse = await getBillingLedger(
+      new Request("http://localhost/api/billing/ledger?planId=free")
+    );
+    const ledger = await ledgerResponse.json();
+    const checkoutResponse = await createCheckout(
+      jsonRequest("/api/billing/checkout", { planId: "pro" })
+    );
+    const checkout = await checkoutResponse.json();
+    const invoiceResponse = await createInvoice(
+      jsonRequest("/api/billing/invoices", {
+        planId: "pro",
+        amountCny: 399,
+        buyerTitle: "礼记科技",
+        taxId: "91110000123456789X",
+        email: "finance@example.test",
+      })
+    );
+    const invoice = await invoiceResponse.json();
+    const approvalsResponse = await getCpsApprovals();
+    const approvals = await approvalsResponse.json();
+    const approvalResponse = await updateCpsApproval(
+      jsonRequest("/api/finance/cps-approvals", {
+        approvalId: approvals.approvals[0].id,
+        action: "approve_payout",
+        note: "内部验收通过。",
+      })
+    );
+    const approval = await approvalResponse.json();
+    const opsAlertsResponse = await getOpsAlerts();
+    const opsAlerts = await opsAlertsResponse.json();
+    const opsAlertResponse = await updateOpsAlert(
+      jsonRequest("/api/ops/alerts", {
+        alertId: opsAlerts.alerts[0].id,
+        action: "acknowledge",
+        note: "已分派。",
+      })
+    );
+    const opsAlert = await opsAlertResponse.json();
 
     expect(production.commands).toContain("npm run prod:check");
     expect(smoke.iterations).toBe(4);
@@ -367,6 +410,13 @@ describe("productization API routes", () => {
     expect(nativeValidation.validation.progressPercent).toBe(50);
     expect(codebook.matched.retryPolicy).toBe("circuit_break");
     expect(entitlements.plan.id).toBe("free");
+    expect(ledger.ledger.entries.length).toBeGreaterThan(0);
+    expect(checkout.checkout.status).toBe("manual_review_required");
+    expect(invoice.invoice.status).toBe("queued");
+    expect(approvals.approvals.length).toBeGreaterThan(0);
+    expect(approval.approval.status).toBe("approved");
+    expect(opsAlerts.alerts.length).toBeGreaterThan(0);
+    expect(opsAlert.alert.status).toBe("acknowledged");
   });
 
   it("exports redacted data and creates deletion requests", async () => {

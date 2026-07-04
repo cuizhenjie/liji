@@ -46,6 +46,8 @@ export function getReadinessChecks(
   const hasAliyunVoice = hasAliyunBase && has(env.ALIYUN_VOICE_CALLED_SHOW_NUMBER, env.ALIYUN_VOICE_TTS_CODE, env.LIJI_DEFAULT_NOTIFY_PHONE);
   const externalNotificationsEnabled = env.LIJI_ENABLE_EXTERNAL_NOTIFICATIONS === "true";
   const templateCircuitBreakerEnabled = env.LIJI_NOTIFICATION_TEMPLATE_CIRCUIT_BREAKER !== "false";
+  const hasBillingCheckout = has(env.LIJI_BILLING_PROVIDER, env.LIJI_BILLING_CHECKOUT_URL);
+  const hasInvoiceProvider = env.LIJI_INVOICE_PROVIDER === "fapiao_api";
   const hasNotificationReceiptPush = hasSupabaseService && has(env.LIJI_NOTIFICATION_RECEIPT_CALLBACK_SECRET);
   const hasCaptureCallback = hasSupabaseService && has(env.LIJI_CAPTURE_PROVIDER_CALLBACK_SECRET);
   const hasCaptureAllowlist = has(env.LIJI_CAPTURE_PROVIDER_ALLOWED_IPS);
@@ -278,6 +280,28 @@ export function getReadinessChecks(
         : missingFulfillmentSyncSecrets.length > 0
           ? `已配置 ${missingFulfillmentSyncSecrets.join("、")} 订单 API 但缺少签名密钥。`
           : "已配置的平台订单 API 均带签名密钥。",
+    }),
+    check({
+      id: "billing-checkout-provider",
+      label: "订阅支付 checkout",
+      category: "ops",
+      requiredForProduction: false,
+      ok: hasBillingCheckout,
+      warn: true,
+      detail: hasBillingCheckout
+        ? "已配置订阅支付 provider 与 checkout 地址。"
+        : "未配置 LIJI_BILLING_PROVIDER 或 LIJI_BILLING_CHECKOUT_URL，付费套餐需人工开通。",
+    }),
+    check({
+      id: "billing-invoice-provider",
+      label: "发票 provider",
+      category: "ops",
+      requiredForProduction: false,
+      ok: hasInvoiceProvider,
+      warn: true,
+      detail: hasInvoiceProvider
+        ? "发票申请可进入正式 provider。"
+        : "未配置 LIJI_INVOICE_PROVIDER=fapiao_api，发票申请先进入人工队列。",
     }),
   ];
 }

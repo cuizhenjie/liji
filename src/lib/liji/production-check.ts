@@ -52,6 +52,10 @@ const expectedMigrations: Array<{ file: string; purpose: string }> = [
     file: "20260703233000_notification_retry_ops.sql",
     purpose: "通知重试治理和停呼原因字段。",
   },
+  {
+    file: "20260704110000_p2_commercial_ops.sql",
+    purpose: "订阅、权益扣减流水、发票、CPS 财务审批与告警事件。",
+  },
 ];
 
 function appUrl(env: Record<string, string | undefined>) {
