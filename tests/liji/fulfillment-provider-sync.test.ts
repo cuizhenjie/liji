@@ -6,7 +6,11 @@ import {
   normalizeFulfillmentProviderOrders,
   signFulfillmentProviderSyncRequest,
 } from "../../src/lib/liji/fulfillment-provider-sync";
-import { reconcileFulfillmentOrders } from "../../src/lib/liji/fulfillment-reconciliation";
+import {
+  applyFulfillmentDiscrepancyAction,
+  createFulfillmentDiscrepancies,
+  reconcileFulfillmentOrders,
+} from "../../src/lib/liji/fulfillment-reconciliation";
 
 describe("fulfillment provider sync", () => {
   it("normalizes provider order payloads from common affiliate fields", () => {
@@ -93,5 +97,33 @@ describe("fulfillment provider sync", () => {
     expect(csv.split("\n")[0]).toContain("external_order_id");
     expect(csv).toContain('"order-1"');
     expect(csv).toContain('"30"');
+  });
+
+  it("derives and resolves fulfillment discrepancies from reconciliation risks", () => {
+    const summary = reconcileFulfillmentOrders([
+      {
+        id: "u-1",
+        userId: "user-1",
+        provider: "jd",
+        externalOrderId: "order-1",
+        status: "failed",
+        amountCny: 1000,
+        settlementStatus: "disputed",
+        settlementPeriod: "2026-07",
+        receivedAt: "2026-07-03T10:00:00Z",
+        rawPayload: {},
+      },
+    ], new Date("2026-07-04T10:00:00Z"));
+    const discrepancies = createFulfillmentDiscrepancies(summary, new Date("2026-07-04T10:00:00Z"));
+    const resolved = applyFulfillmentDiscrepancyAction({
+      discrepancy: discrepancies[0],
+      action: "mark_resolved",
+      note: "已与供应商核对。",
+      now: new Date("2026-07-04T11:00:00Z"),
+    });
+
+    expect(discrepancies.some((item) => item.riskFlag === "settlement_disputed")).toBe(true);
+    expect(resolved.status).toBe("resolved");
+    expect(resolved.resolvedAt).toBe("2026-07-04T11:00:00.000Z");
   });
 });

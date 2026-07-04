@@ -30,6 +30,7 @@ npm run typecheck
 npm run test
 npm run build
 npm run e2e
+npm run prod:check
 ```
 
 如果首次运行 E2E 缺少浏览器：
@@ -70,14 +71,19 @@ npx playwright install chromium webkit
 - OCR/ASR 回调白名单：`/api/capture/provider-callback` 可通过 `LIJI_CAPTURE_PROVIDER_ALLOWED_IPS` 校验 provider 来源 IP。
 - P0 上线清单：`/api/health` 返回 `p0Actions`，按云端数据、OCR/ASR、外部通知、履约结算输出 ready/needs_config/blocked 与下一步动作。
 - 通知治理：`/api/notification-retries/run` 按供应商失败文案区分频控重试、模板/权限熔断、号码永久失败和用户退订/停呼，并写入 `notification_retry` 告警。
+- 生产检查与压测：`/api/ops/production-check` 与 `npm run prod:check` 检查 env、migration、回调 URL 和 P0 阻塞项；`/api/ops/service-smoke` 提供不误发通知/不下单的真实服务 dry-run 压测入口。
+- 履约差异处理：`/api/fulfillment/discrepancies` 从对账风险派生退款、佣金、归因和争议订单队列，支持人工标记解决、请求供应商证据和手动调整。
+- 原生采集桥：`/api/capture/native-bridge` 暴露短信读取、长按录音、附件上传进度和 PWA 降级能力状态，并校验原生侧 payload。
+- 商业化权益：`/api/billing/entitlements` 计算体验版/专业版/高管版的关系画像、AI 记忆、短信、语音、紧急升级和履约对账额度占用。
+- 运营页增强：运营台展示生产阻塞、dry-run 告警、履约差异、会员权益、通知错误码 SOP 和原生采集桥状态。
 
 ## 下一批待接真实服务
 
 - 配置真实 OCR/ASR provider 账号、正式回调域名和供应商白名单 IP，并沉淀人工补录 SOP。
-- 配置京东/淘宝/美团/携程/同程真实订单 API、签名密钥和结算周期，补结算差异人工处理台。
+- 配置京东/淘宝/美团/携程/同程真实订单 API、签名密钥和结算周期，并用履约差异队列做人工审批。
 - 接真实通知压测：配置阿里云正式模板/签名/回执推送，补充供应商错误码样本库和运营处理 SOP。
-- 原生端增强：移动端短信读取权限、长按录音、附件上传进度和 PWA 安装后的系统级降级策略。
-- 商业化闭环：会员订阅、紧急呼叫权益计量、CPS 结算审核和财务对账审批。
+- 原生端增强：接入真实移动端短信读取权限、长按录音和附件上传进度回调。
+- 商业化闭环：接真实订阅支付、发票、权益扣减流水和 CPS 财务审批流。
 
 ## 环境变量
 
@@ -101,6 +107,8 @@ LIJI_NOTIFICATION_STOP_KEYWORDS=
 LIJI_NOTIFICATION_TEMPLATE_CIRCUIT_BREAKER=
 LIJI_NOTIFICATION_RECEIPT_CALLBACK_SECRET=
 LIJI_PUBLIC_APP_URL=
+LIJI_NATIVE_BRIDGE_SECRET=
+LIJI_BILLING_PLAN=
 LIJI_CAPTURE_OCR_PROVIDER=
 LIJI_CAPTURE_ASR_PROVIDER=
 LIJI_CAPTURE_PROVIDER_ENDPOINT=

@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   classifyNotificationFailure,
   createNotificationGovernanceDecision,
+  getNotificationFailureCodebook,
+  lookupNotificationFailureCode,
   parseNotificationStopKeywords,
 } from "../../src/lib/liji/notification-governance";
 
@@ -88,5 +90,17 @@ describe("notification governance", () => {
       providerStatus: "submitted",
       providerMessage: "Aliyun SMS 已提交。",
     })).toBe("unknown");
+  });
+
+  it("exposes an operator codebook for notification SOPs", () => {
+    const codebook = getNotificationFailureCodebook();
+    const entry = lookupNotificationFailureCode("Aliyun SMS 失败：isv.SMS_TEMPLATE_ILLEGAL");
+
+    expect(codebook.length).toBeGreaterThanOrEqual(5);
+    expect(entry).toMatchObject({
+      failureClass: "template_or_provider",
+      retryPolicy: "circuit_break",
+    });
+    expect(entry?.sop.length).toBeGreaterThan(0);
   });
 });

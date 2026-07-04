@@ -17,6 +17,8 @@ const envSchema = z.object({
   LIJI_NOTIFICATION_TEMPLATE_CIRCUIT_BREAKER: z.string().optional(),
   LIJI_NOTIFICATION_RECEIPT_CALLBACK_SECRET: z.string().min(1).optional(),
   LIJI_PUBLIC_APP_URL: z.string().url().optional(),
+  LIJI_NATIVE_BRIDGE_SECRET: z.string().min(1).optional(),
+  LIJI_BILLING_PLAN: z.enum(["free", "pro", "executive"]).optional(),
   LIJI_CAPTURE_OCR_PROVIDER: z.string().min(1).optional(),
   LIJI_CAPTURE_ASR_PROVIDER: z.string().min(1).optional(),
   LIJI_CAPTURE_PROVIDER_ENDPOINT: z.string().url().optional(),

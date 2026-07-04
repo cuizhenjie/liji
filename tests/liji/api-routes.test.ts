@@ -3,8 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DELETE as deleteContact, POST as saveContact } from "../../src/app/api/contacts/route";
 import { GET as authCallback } from "../../src/app/auth/callback/route";
 import { POST as batchAiMemories } from "../../src/app/api/ai-memories/batch/route";
+import { GET as getEntitlements } from "../../src/app/api/billing/entitlements/route";
 import { POST as extractCapture } from "../../src/app/api/capture/extract/route";
 import { POST as manualCompleteCapture } from "../../src/app/api/capture/manual-complete/route";
+import { GET as getNativeBridge, POST as validateNativeBridge } from "../../src/app/api/capture/native-bridge/route";
 import { POST as captureProviderCallback } from "../../src/app/api/capture/provider-callback/route";
 import { POST as processCaptureJobs } from "../../src/app/api/capture/process-jobs/route";
 import { POST as runCaptureSla } from "../../src/app/api/capture/sla/run/route";
@@ -15,6 +17,7 @@ import { POST as maintainAiMemories } from "../../src/app/api/ai-memories/mainte
 import { POST as reviewAiMemory } from "../../src/app/api/ai-memories/review/route";
 import { POST as fulfillmentCallback } from "../../src/app/api/fulfillment/callback/route";
 import { POST as clickFulfillment } from "../../src/app/api/fulfillment/click/route";
+import { GET as getFulfillmentDiscrepancies, POST as resolveFulfillmentDiscrepancy } from "../../src/app/api/fulfillment/discrepancies/route";
 import { GET as exportFulfillment } from "../../src/app/api/fulfillment/export/route";
 import { POST as providerSyncFulfillment } from "../../src/app/api/fulfillment/provider-sync/route";
 import { POST as reconcileFulfillment } from "../../src/app/api/fulfillment/reconcile/route";
@@ -24,6 +27,9 @@ import { POST as searchAiMemories } from "../../src/app/api/ai-memories/search/r
 import { GET as getIntegrations } from "../../src/app/api/integrations/route";
 import { GET as getMonthlyInsight } from "../../src/app/api/monthly-insight/route";
 import { GET as getMonthlyReport } from "../../src/app/api/monthly-report/route";
+import { GET as getNotificationCodebook } from "../../src/app/api/notifications/codebook/route";
+import { GET as getProductionCheck } from "../../src/app/api/ops/production-check/route";
+import { GET as getServiceSmoke, POST as runServiceSmoke } from "../../src/app/api/ops/service-smoke/route";
 import { POST as parseInput } from "../../src/app/api/parse-input/route";
 import { POST as savePushSubscription } from "../../src/app/api/push-subscriptions/route";
 import { POST as deletePrivacy } from "../../src/app/api/privacy/delete/route";
@@ -309,6 +315,58 @@ describe("productization API routes", () => {
     expect(health.checks.length).toBeGreaterThan(0);
     expect(health.summary.total).toBe(health.checks.length);
     expect(health.p0Actions.find((item: { id: string }) => item.id === "notification-production")).toBeDefined();
+  });
+
+  it("serves high ROI operations readiness endpoints in demo mode", async () => {
+    const productionResponse = await getProductionCheck();
+    const production = await productionResponse.json();
+    const smokeResponse = await getServiceSmoke(
+      new Request("http://localhost/api/ops/service-smoke?iterations=4")
+    );
+    const smoke = await smokeResponse.json();
+    const smokePostResponse = await runServiceSmoke(
+      jsonRequest("/api/ops/service-smoke", { iterations: 5 })
+    );
+    const smokePost = await smokePostResponse.json();
+    const discrepanciesResponse = await getFulfillmentDiscrepancies();
+    const discrepancies = await discrepanciesResponse.json();
+    const resolvedResponse = await resolveFulfillmentDiscrepancy(
+      jsonRequest("/api/fulfillment/discrepancies", {
+        discrepancyId: discrepancies.discrepancies[0].id,
+        action: "mark_resolved",
+        note: "已人工核对。",
+      })
+    );
+    const resolved = await resolvedResponse.json();
+    const nativeResponse = await getNativeBridge();
+    const native = await nativeResponse.json();
+    const nativeValidationResponse = await validateNativeBridge(
+      jsonRequest("/api/capture/native-bridge", {
+        source: "file_upload",
+        fileName: "receipt.png",
+        uploadedBytes: 50,
+        totalBytes: 100,
+      })
+    );
+    const nativeValidation = await nativeValidationResponse.json();
+    const codebookResponse = await getNotificationCodebook(
+      new Request("http://localhost/api/notifications/codebook?sample=isv.SMS_TEMPLATE_ILLEGAL")
+    );
+    const codebook = await codebookResponse.json();
+    const entitlementsResponse = await getEntitlements(
+      new Request("http://localhost/api/billing/entitlements?planId=free")
+    );
+    const entitlements = await entitlementsResponse.json();
+
+    expect(production.commands).toContain("npm run prod:check");
+    expect(smoke.iterations).toBe(4);
+    expect(smokePost.iterations).toBe(5);
+    expect(discrepancies.discrepancies.length).toBeGreaterThan(0);
+    expect(resolved.discrepancy.status).toBe("resolved");
+    expect(native.capabilities.length).toBeGreaterThan(0);
+    expect(nativeValidation.validation.progressPercent).toBe(50);
+    expect(codebook.matched.retryPolicy).toBe("circuit_break");
+    expect(entitlements.plan.id).toBe("free");
   });
 
   it("exports redacted data and creates deletion requests", async () => {

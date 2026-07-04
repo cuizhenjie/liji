@@ -105,6 +105,7 @@ describe("fulfillment reconciliation", () => {
       "refund_or_cancelled"
     );
     expect(summary.items.find((item) => item.externalOrderId === "order-3")?.riskFlags).toEqual([
+      "unmatched_plan",
       "settlement_disputed",
       "provider_failed",
     ]);

@@ -66,6 +66,30 @@ export type FulfillmentReconciliationSummary = {
   items: FulfillmentOrderReconciliation[];
 };
 
+export type FulfillmentDiscrepancyStatus = "open" | "approved" | "rejected" | "resolved";
+
+export type FulfillmentDiscrepancyAction =
+  | "approve_manual_adjustment"
+  | "reject_provider_record"
+  | "request_provider_evidence"
+  | "mark_resolved";
+
+export type FulfillmentReconciliationDiscrepancy = {
+  id: string;
+  provider: FulfillmentProvider;
+  externalOrderId: string;
+  severity: "info" | "warning" | "critical";
+  reason: string;
+  riskFlag: string;
+  status: FulfillmentDiscrepancyStatus;
+  recommendedAction: FulfillmentDiscrepancyAction;
+  operatorNote: string;
+  netAmountCny: number;
+  commissionCny: number;
+  createdAt: string;
+  resolvedAt?: string;
+};
+
 function text(row: Record<string, unknown>, key: string) {
   const value = row[key];
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
@@ -206,6 +230,7 @@ function reconcileOrder(updates: FulfillmentOrderUpdate[]): FulfillmentOrderReco
     : Math.max(0, grossAmount - refundedAmount);
   const commission = settlementStatus === "settled" ? latestCommission : 0;
   const riskFlags = [
+    !latest.planId ? "unmatched_plan" : "",
     settlementStatus === "disputed" ? "settlement_disputed" : "",
     refundedAmount > 0 ? "refund_or_cancelled" : "",
     latest.status === "failed" ? "provider_failed" : "",
@@ -265,6 +290,75 @@ export function reconcileFulfillmentOrders(
     commissionCny: roundMoney(items.reduce((total, item) => total + item.commissionCny, 0)),
     providers,
     items,
+  };
+}
+
+function discrepancySeverity(flag: string): FulfillmentReconciliationDiscrepancy["severity"] {
+  if (flag === "settlement_disputed" || flag === "provider_failed") return "critical";
+  if (flag === "unmatched_plan" || flag === "missing_commission") return "warning";
+  return "info";
+}
+
+function discrepancyReason(flag: string) {
+  const reasons: Record<string, string> = {
+    unmatched_plan: "订单缺少礼记 planId，无法自动归因到具体履约方案。",
+    settlement_disputed: "供应商结算状态为 disputed，需要人工核对结算口径。",
+    refund_or_cancelled: "订单发生退款或取消，需要确认是否冲正佣金与预算。",
+    provider_failed: "供应商返回失败状态，需要确认是否为接口异常或订单关闭。",
+    missing_commission: "订单已结算但佣金为 0，需要核对 CPS 归因和结算周期。",
+  };
+  return reasons[flag] ?? "订单存在未知对账风险，需要人工复核。";
+}
+
+function recommendedDiscrepancyAction(flag: string): FulfillmentDiscrepancyAction {
+  if (flag === "provider_failed" || flag === "settlement_disputed") return "request_provider_evidence";
+  if (flag === "missing_commission" || flag === "unmatched_plan") return "approve_manual_adjustment";
+  if (flag === "refund_or_cancelled") return "mark_resolved";
+  return "request_provider_evidence";
+}
+
+export function createFulfillmentDiscrepancies(
+  summary: FulfillmentReconciliationSummary,
+  now = new Date()
+): FulfillmentReconciliationDiscrepancy[] {
+  const createdAt = now.toISOString();
+  return summary.items.flatMap((item) =>
+    item.riskFlags.map((flag) => ({
+      id: `${item.provider}:${item.externalOrderId}:${flag}`,
+      provider: item.provider,
+      externalOrderId: item.externalOrderId,
+      severity: discrepancySeverity(flag),
+      reason: discrepancyReason(flag),
+      riskFlag: flag,
+      status: "open" as const,
+      recommendedAction: recommendedDiscrepancyAction(flag),
+      operatorNote: "待财务或运营复核。",
+      netAmountCny: item.netAmountCny,
+      commissionCny: item.commissionCny,
+      createdAt,
+    }))
+  );
+}
+
+export function applyFulfillmentDiscrepancyAction(params: {
+  discrepancy: FulfillmentReconciliationDiscrepancy;
+  action: FulfillmentDiscrepancyAction;
+  note?: string;
+  now?: Date;
+}): FulfillmentReconciliationDiscrepancy {
+  const resolved = params.action === "mark_resolved";
+  const status: FulfillmentDiscrepancyStatus = resolved
+    ? "resolved"
+    : params.action === "reject_provider_record"
+      ? "rejected"
+      : "approved";
+
+  return {
+    ...params.discrepancy,
+    status,
+    recommendedAction: params.action,
+    operatorNote: params.note?.trim() || params.discrepancy.operatorNote,
+    resolvedAt: resolved ? (params.now ?? new Date()).toISOString() : params.discrepancy.resolvedAt,
   };
 }
 

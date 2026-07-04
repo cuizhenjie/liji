@@ -1,14 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import {
   ActivityIcon,
+  AlertTriangleIcon,
   BellRingIcon,
   BotIcon,
   CalendarDaysIcon,
   CheckIcon,
   ClipboardCheckIcon,
+  CrownIcon,
   DownloadIcon,
+  FlaskConicalIcon,
   GiftIcon,
   HandCoinsIcon,
   HistoryIcon,
@@ -25,6 +28,7 @@ import {
   SearchIcon,
   SendIcon,
   ShieldCheckIcon,
+  SmartphoneIcon,
   SparklesIcon,
   Trash2Icon,
   UserRoundIcon,
@@ -84,12 +88,14 @@ import { Textarea } from "@/components/ui/textarea";
 import type { CaptureSource } from "@/lib/liji/ai";
 import { deriveComplianceProfile } from "@/lib/liji/compliance";
 import { generateFestivalPlan, generateTravelPlan } from "@/lib/liji/budget";
+import type { EntitlementReport } from "@/lib/liji/entitlements";
 import {
   addRecurringBill as addRecurringBillToWorkspace,
   addTransaction as addTransactionToWorkspace,
   updateBudgetTotal,
 } from "@/lib/liji/finance";
 import { buildPlanFulfillmentLinks } from "@/lib/liji/fulfillment";
+import type { FulfillmentReconciliationDiscrepancy } from "@/lib/liji/fulfillment-reconciliation";
 import { createUuid } from "@/lib/liji/ids";
 import type { IntegrationStatus } from "@/lib/liji/integrations";
 import {
@@ -107,6 +113,10 @@ import {
 } from "@/lib/liji/persistence";
 import { createDeletionRequest, exportWorkspaceData } from "@/lib/liji/privacy";
 import { registerBrowserPushSubscription } from "@/lib/liji/push";
+import type { NativeBridgeCapability } from "@/lib/liji/native-bridge";
+import type { NotificationFailureCodebookEntry } from "@/lib/liji/notification-governance";
+import type { ProductionCheckReport } from "@/lib/liji/production-check";
+import type { ServiceSmokeSuite } from "@/lib/liji/service-smoke";
 import { createSupabaseBrowserClient } from "@/lib/liji/supabase-browser";
 import type { TravelPreference } from "@/lib/liji/travel-options";
 import {
@@ -144,6 +154,15 @@ type PrivacyToggleKey = Exclude<keyof PrivacySettings, "notificationPhone">;
 
 type LijiAppProps = {
   initialData: WorkspaceData;
+};
+
+type OpsDashboardState = {
+  productionCheck: ProductionCheckReport | null;
+  serviceSmoke: ServiceSmokeSuite | null;
+  discrepancies: FulfillmentReconciliationDiscrepancy[];
+  nativeCapabilities: NativeBridgeCapability[];
+  notificationCodebook: NotificationFailureCodebookEntry[];
+  entitlements: EntitlementReport | null;
 };
 
 const sectionItems: Array<{
@@ -449,6 +468,14 @@ export function LijiApp({ initialData }: LijiAppProps) {
   const [authEmail, setAuthEmail] = useState("");
   const [authUserEmail, setAuthUserEmail] = useState<string | null>(null);
   const [integrations, setIntegrations] = useState<IntegrationStatus[]>([]);
+  const [opsDashboard, setOpsDashboard] = useState<OpsDashboardState>({
+    productionCheck: null,
+    serviceSmoke: null,
+    discrepancies: [],
+    nativeCapabilities: [],
+    notificationCodebook: [],
+    entitlements: null,
+  });
   const [isPending, startTransition] = useTransition();
 
   const identityContacts = useMemo(
@@ -482,6 +509,53 @@ export function LijiApp({ initialData }: LijiAppProps) {
   const relationshipBudget = data.budgets.find(
     (budget) => budget.category === "relationship"
   );
+
+  const refreshOpsDashboard = useCallback(async () => {
+    try {
+      const [
+        productionResponse,
+        smokeResponse,
+        discrepanciesResponse,
+        nativeResponse,
+        codebookResponse,
+        entitlementsResponse,
+      ] = await Promise.all([
+        fetch("/api/ops/production-check"),
+        fetch("/api/ops/service-smoke?iterations=3"),
+        fetch("/api/fulfillment/discrepancies"),
+        fetch("/api/capture/native-bridge"),
+        fetch("/api/notifications/codebook"),
+        fetch("/api/billing/entitlements"),
+      ]);
+
+      const [
+        productionCheck,
+        serviceSmoke,
+        discrepanciesPayload,
+        nativePayload,
+        codebookPayload,
+        entitlements,
+      ] = await Promise.all([
+        productionResponse.json() as Promise<ProductionCheckReport>,
+        smokeResponse.json() as Promise<ServiceSmokeSuite>,
+        discrepanciesResponse.json() as Promise<{ discrepancies?: FulfillmentReconciliationDiscrepancy[] }>,
+        nativeResponse.json() as Promise<{ capabilities?: NativeBridgeCapability[] }>,
+        codebookResponse.json() as Promise<{ codebook?: NotificationFailureCodebookEntry[] }>,
+        entitlementsResponse.json() as Promise<EntitlementReport>,
+      ]);
+
+      setOpsDashboard({
+        productionCheck,
+        serviceSmoke,
+        discrepancies: discrepanciesPayload.discrepancies ?? [],
+        nativeCapabilities: nativePayload.capabilities ?? [],
+        notificationCodebook: codebookPayload.codebook ?? [],
+        entitlements,
+      });
+    } catch {
+      // Ops readiness is informational; keep the core assistant usable.
+    }
+  }, []);
 
   useEffect(() => {
     if ("serviceWorker" in navigator) {
@@ -536,6 +610,14 @@ export function LijiApp({ initialData }: LijiAppProps) {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void refreshOpsDashboard();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [refreshOpsDashboard]);
 
   async function handleParseCapture() {
     if (!captureText.trim()) {
@@ -714,7 +796,7 @@ export function LijiApp({ initialData }: LijiAppProps) {
     });
   }
 
-  async function runOpsJob(kind: "captureSla" | "notificationRetry" | "providerSync") {
+  async function runOpsJob(kind: "captureSla" | "notificationRetry" | "providerSync" | "productionCheck" | "serviceSmoke" | "fulfillmentDiscrepancies" | "nativeBridge") {
     const config = {
       captureSla: {
         path: "/api/capture/sla/run",
@@ -731,13 +813,33 @@ export function LijiApp({ initialData }: LijiAppProps) {
         body: { limit: 50 },
         success: "联盟订单同步完成",
       },
+      productionCheck: {
+        path: "/api/ops/production-check",
+        body: undefined,
+        success: "生产检查已刷新",
+      },
+      serviceSmoke: {
+        path: "/api/ops/service-smoke",
+        body: { iterations: 5 },
+        success: "真实服务 dry-run 压测完成",
+      },
+      fulfillmentDiscrepancies: {
+        path: "/api/fulfillment/discrepancies",
+        body: undefined,
+        success: "履约差异队列已刷新",
+      },
+      nativeBridge: {
+        path: "/api/capture/native-bridge",
+        body: undefined,
+        success: "原生采集桥状态已刷新",
+      },
     }[kind];
 
     startTransition(async () => {
       const response = await fetch(config.path, {
-        method: "POST",
+        method: config.body ? "POST" : "GET",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(config.body),
+        ...(config.body ? { body: JSON.stringify(config.body) } : {}),
       });
       const result = (await response.json().catch(() => ({}))) as { error?: string };
       if (!response.ok) {
@@ -745,6 +847,7 @@ export function LijiApp({ initialData }: LijiAppProps) {
         return;
       }
 
+      await refreshOpsDashboard();
       toast.success(config.success);
     });
   }
@@ -1212,6 +1315,7 @@ export function LijiApp({ initialData }: LijiAppProps) {
                 <OperationsSection
                   data={data}
                   integrations={integrations}
+                  opsDashboard={opsDashboard}
                   onRunJob={runOpsJob}
                   onNavigate={setActiveSection}
                   pending={isPending}
@@ -2161,13 +2265,15 @@ function FinanceSection({
 function OperationsSection({
   data,
   integrations,
+  opsDashboard,
   onRunJob,
   onNavigate,
   pending,
 }: {
   data: WorkspaceData;
   integrations: IntegrationStatus[];
-  onRunJob: (kind: "captureSla" | "notificationRetry" | "providerSync") => void;
+  opsDashboard: OpsDashboardState;
+  onRunJob: (kind: "captureSla" | "notificationRetry" | "providerSync" | "productionCheck" | "serviceSmoke" | "fulfillmentDiscrepancies" | "nativeBridge") => void;
   onNavigate: (section: SectionId) => void;
   pending: boolean;
 }) {
@@ -2178,21 +2284,24 @@ function OperationsSection({
   const reviewMemories = data.aiMemories.filter((memory) =>
     memory.reviewStatus === "stale" || memory.reviewStatus === "review_required"
   );
-  const riskyPlans = data.plans.filter((plan) => plan.riskLevel !== "low");
   const serviceReadiness = integrations.filter((item) =>
     item.provider === "capture_provider_callback" ||
     item.provider === "capture_provider_allowlist" ||
     item.provider === "fulfillment_provider_sync" ||
     item.provider === "travel_quote_provider"
   );
+  const productionBlocked = opsDashboard.productionCheck?.p0Actions.filter((item) => item.status === "blocked").length ?? 0;
+  const smokeIssues = (opsDashboard.serviceSmoke?.summary.failed ?? 0) + (opsDashboard.serviceSmoke?.summary.warnings ?? 0);
+  const openDiscrepancies = opsDashboard.discrepancies.filter((item) => item.status === "open");
+  const entitlementWarnings = opsDashboard.entitlements?.usage.filter((item) => item.status !== "ok").length ?? 0;
 
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-        <MetricCard title="采集待处理" value={String(pendingOcrAsr.length)} detail="OCR/ASR/账单" icon={ClipboardCheckIcon} />
-        <MetricCard title="通知异常" value={String(failedNotifications.length)} detail="短信/语音失败" icon={BellRingIcon} />
-        <MetricCard title="记忆复核" value={String(reviewMemories.length)} detail="待批处理" icon={NotebookPenIcon} />
-        <MetricCard title="履约风险" value={String(riskyPlans.length)} detail="预算/合规" icon={GiftIcon} />
+        <MetricCard title="生产阻塞" value={String(productionBlocked)} detail="P0 readiness" icon={AlertTriangleIcon} />
+        <MetricCard title="压测告警" value={String(smokeIssues)} detail="dry-run checks" icon={FlaskConicalIcon} />
+        <MetricCard title="履约差异" value={String(openDiscrepancies.length)} detail="待财务处理" icon={GiftIcon} />
+        <MetricCard title="权益预警" value={String(entitlementWarnings)} detail={opsDashboard.entitlements?.plan.label ?? "待加载"} icon={CrownIcon} />
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -2203,6 +2312,20 @@ function OperationsSection({
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <OpsAction
+                title="生产检查"
+                detail={`${productionBlocked} 项 P0 阻塞，${opsDashboard.productionCheck?.summary.warnings ?? 0} 项建议配置`}
+                icon={ShieldCheckIcon}
+                disabled={pending}
+                onClick={() => onRunJob("productionCheck")}
+              />
+              <OpsAction
+                title="真实服务 dry-run"
+                detail={`${opsDashboard.serviceSmoke?.summary.total ?? 0} 项合约压测，不误发通知`}
+                icon={FlaskConicalIcon}
+                disabled={pending}
+                onClick={() => onRunJob("serviceSmoke")}
+              />
               <OpsAction
                 title="OCR/ASR SLA"
                 detail={`${pendingOcrAsr.length} 项采集可能需要补录或释放`}
@@ -2231,6 +2354,20 @@ function OperationsSection({
                 disabled={pending}
                 onClick={() => onRunJob("providerSync")}
               />
+              <OpsAction
+                title="履约差异队列"
+                detail={`${openDiscrepancies.length} 条退款/佣金/归因差异`}
+                icon={AlertTriangleIcon}
+                disabled={pending}
+                onClick={() => onRunJob("fulfillmentDiscrepancies")}
+              />
+              <OpsAction
+                title="原生采集桥"
+                detail={`${opsDashboard.nativeCapabilities.filter((item) => item.status === "ready").length}/${opsDashboard.nativeCapabilities.length} 项能力可用`}
+                icon={SmartphoneIcon}
+                disabled={pending}
+                onClick={() => onRunJob("nativeBridge")}
+              />
             </div>
           </CardContent>
           <CardFooter className="justify-between">
@@ -2245,30 +2382,113 @@ function OperationsSection({
           </CardFooter>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>真实服务就绪</CardTitle>
-            <CardDescription>provider 账号、白名单与同步能力。</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col gap-2">
-              {serviceReadiness.map((item) => (
-                <div key={item.provider} className="rounded-md border p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 font-medium">
-                      <MapPinnedIcon className="size-4 text-primary" />
-                      {item.label}
+        <div className="flex flex-col gap-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>真实服务就绪</CardTitle>
+              <CardDescription>provider 账号、白名单与同步能力。</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col gap-2">
+                {serviceReadiness.map((item) => (
+                  <div key={item.provider} className="rounded-md border p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 font-medium">
+                        <MapPinnedIcon className="size-4 text-primary" />
+                        {item.label}
+                      </div>
+                      <Badge variant={item.mode === "configured" ? "secondary" : "outline"}>
+                        {item.mode === "configured" ? "已配置" : item.mode === "search-link" ? "跳转/候选" : "未配置"}
+                      </Badge>
                     </div>
-                    <Badge variant={item.mode === "configured" ? "secondary" : "outline"}>
-                      {item.mode === "configured" ? "已配置" : item.mode === "search-link" ? "跳转/候选" : "未配置"}
-                    </Badge>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.detail}</p>
                   </div>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.detail}</p>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>P0 上线动作</CardTitle>
+              <CardDescription>按生产检查聚合阻塞与待配置项。</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col gap-2">
+                {(opsDashboard.productionCheck?.p0Actions ?? []).map((action) => (
+                  <div key={action.id} className="rounded-md border p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium">{action.title}</span>
+                      <Badge variant={action.status === "ready" ? "secondary" : "outline"}>
+                        {action.status === "ready" ? "ready" : action.status === "blocked" ? "blocked" : "needs config"}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      {action.blockers[0] ?? action.nextSteps[0]}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>履约差异</CardTitle>
+              <CardDescription>退款、佣金、归因和争议订单。</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col gap-2">
+                {openDiscrepancies.slice(0, 4).map((item) => (
+                  <div key={item.id} className="rounded-md border p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium">{item.provider} · {item.externalOrderId}</span>
+                      <Badge variant={item.severity === "critical" ? "destructive" : "outline"}>{item.severity}</Badge>
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.reason}</p>
+                  </div>
+                ))}
+                {openDiscrepancies.length === 0 ? (
+                  <div className="rounded-md border p-3 text-sm text-muted-foreground">暂无待处理差异。</div>
+                ) : null}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>通知 SOP 与权益</CardTitle>
+              <CardDescription>错误码处理和会员额度计量。</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col gap-3">
+                <div className="rounded-md border p-3">
+                  <div className="font-medium">错误码样本库</div>
+                  <div className="mt-1 text-sm text-muted-foreground">
+                    {opsDashboard.notificationCodebook.length} 条供应商错误码规则
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {opsDashboard.notificationCodebook.slice(0, 3).map((item) => (
+                      <Badge key={item.code} variant="outline">{item.retryPolicy}</Badge>
+                    ))}
+                  </div>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+                <div className="rounded-md border p-3">
+                  <div className="font-medium">{opsDashboard.entitlements?.plan.label ?? "会员权益"}</div>
+                  <div className="mt-1 text-sm text-muted-foreground">
+                    {opsDashboard.entitlements?.upgradeRecommended ? "建议升级以覆盖当前使用量。" : "当前使用量在额度内。"}
+                  </div>
+                </div>
+                <div className="rounded-md border p-3">
+                  <div className="font-medium">原生采集桥</div>
+                  <div className="mt-1 text-sm text-muted-foreground">
+                    {opsDashboard.nativeCapabilities.map((item) => item.label).join("、") || "能力状态加载中"}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

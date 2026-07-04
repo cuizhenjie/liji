@@ -77,6 +77,21 @@ test("shows privacy, auth and authorization controls", async ({ page }) => {
   await expect(page.getByRole("button", { name: /删除云端数据/ })).toBeVisible();
 });
 
+test("shows operations readiness and high ROI controls", async ({ page }) => {
+  await page.getByRole("button", { name: /运营/ }).first().click();
+
+  await expect(page.getByText("生产阻塞")).toBeVisible();
+  await expect(page.getByRole("button", { name: /生产检查/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /真实服务 dry-run/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /履约差异队列/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /原生采集桥/ })).toBeVisible();
+  await expect(page.getByText("P0 上线动作")).toBeVisible();
+  await expect(page.getByText("通知 SOP 与权益")).toBeVisible();
+
+  await page.getByRole("button", { name: /真实服务 dry-run/ }).click();
+  await expect(page.getByText("真实服务 dry-run 压测完成")).toBeVisible();
+});
+
 test("edits AI memory corrections", async ({ page }) => {
   await page.getByRole("button", { name: /人脉/ }).first().click();
 

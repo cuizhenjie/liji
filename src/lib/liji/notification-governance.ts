@@ -18,6 +18,16 @@ export type NotificationGovernanceDecision = {
   retryDelayMultiplier: number;
 };
 
+export type NotificationFailureCodebookEntry = {
+  code: string;
+  provider: "aliyun_sms" | "aliyun_voice" | "generic";
+  failureClass: NotificationFailureClass;
+  severity: "info" | "warning" | "critical";
+  retryPolicy: "retry" | "backoff" | "stop" | "circuit_break";
+  operatorAction: string;
+  sop: string[];
+};
+
 const DEFAULT_STOP_KEYWORDS = [
   "退订",
   "拒收",
@@ -85,6 +95,63 @@ const TRANSIENT_PATTERNS = [
   "超时",
 ];
 
+export const notificationFailureCodebook: NotificationFailureCodebookEntry[] = [
+  {
+    code: "isv.BUSINESS_LIMIT_CONTROL",
+    provider: "aliyun_sms",
+    failureClass: "rate_limited",
+    severity: "warning",
+    retryPolicy: "backoff",
+    operatorAction: "降低重试频率并检查同一手机号/模板的发送频次。",
+    sop: ["确认是否触发小时或天级流控", "保留重试但放大退避", "必要时切换站内提醒或人工确认"],
+  },
+  {
+    code: "isv.SMS_TEMPLATE_ILLEGAL",
+    provider: "aliyun_sms",
+    failureClass: "template_or_provider",
+    severity: "critical",
+    retryPolicy: "circuit_break",
+    operatorAction: "暂停该模板继续发送，检查模板 Code、变量名和审核状态。",
+    sop: ["核对阿里云模板 Code", "检查模板变量与请求参数", "修复后用内部号码压测"],
+  },
+  {
+    code: "isv.SMS_SIGNATURE_ILLEGAL",
+    provider: "aliyun_sms",
+    failureClass: "template_or_provider",
+    severity: "critical",
+    retryPolicy: "circuit_break",
+    operatorAction: "暂停短信发送，检查签名名称与审核状态。",
+    sop: ["核对短信签名", "确认签名审核通过", "恢复前执行 /api/ops/service-smoke dry-run"],
+  },
+  {
+    code: "MOBILE_NUMBER_ILLEGAL",
+    provider: "generic",
+    failureClass: "permanent_recipient",
+    severity: "warning",
+    retryPolicy: "stop",
+    operatorAction: "停止重试并请用户校验通知手机号。",
+    sop: ["标记该日志为停呼", "联系用户确认号码", "更新隐私中心通知手机号后再恢复"],
+  },
+  {
+    code: "USER_OPT_OUT",
+    provider: "generic",
+    failureClass: "user_opt_out",
+    severity: "warning",
+    retryPolicy: "stop",
+    operatorAction: "尊重用户退订/拒收意愿，停止短信或语音触达。",
+    sop: ["保留站内提醒", "不要自动恢复外部通知", "如用户主动授权再重新开启"],
+  },
+  {
+    code: "QueryCallDetailByCallId.empty",
+    provider: "aliyun_voice",
+    failureClass: "retryable",
+    severity: "info",
+    retryPolicy: "retry",
+    operatorAction: "语音回执可能延迟，等待下一轮轮询。",
+    sop: ["检查 CallId 是否存在", "等待下一次回执轮询", "超过 SLA 后人工确认"],
+  },
+];
+
 function normalize(value?: string) {
   return value?.trim().toLowerCase() ?? "";
 }
@@ -101,6 +168,18 @@ export function parseNotificationStopKeywords(value?: string) {
   return [...new Set([...(custom ?? []), ...DEFAULT_STOP_KEYWORDS])];
 }
 
+export function getNotificationFailureCodebook() {
+  return notificationFailureCodebook;
+}
+
+export function lookupNotificationFailureCode(messageOrCode: string) {
+  const normalized = normalize(messageOrCode);
+  return notificationFailureCodebook.find((entry) =>
+    normalized.includes(entry.code.toLowerCase()) ||
+    normalized.includes(entry.failureClass)
+  );
+}
+
 export function classifyNotificationFailure(params: {
   providerMessage?: string;
   providerStatus?: NotificationLog["providerStatus"];
@@ -110,6 +189,11 @@ export function classifyNotificationFailure(params: {
   const message = normalize(params.providerMessage);
   if (!message && params.providerStatus !== "failed") {
     return "unknown";
+  }
+
+  const codebookEntry = message ? lookupNotificationFailureCode(message) : undefined;
+  if (codebookEntry) {
+    return codebookEntry.failureClass;
   }
 
   const stopKeywords = params.stopKeywords ?? DEFAULT_STOP_KEYWORDS;
