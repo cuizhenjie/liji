@@ -96,6 +96,14 @@ async function persistReceipt(
 
 export async function POST(request: Request) {
   const rawBody = await request.text();
+  const client = createSupabaseServiceClient();
+  if (client && !env.LIJI_NOTIFICATION_RECEIPT_CALLBACK_SECRET) {
+    return Response.json({
+      code: 401,
+      msg: "LIJI_NOTIFICATION_RECEIPT_CALLBACK_SECRET is required for persisted notification receipts",
+    }, { status: 401 });
+  }
+
   const { signature, token } = signatureFromRequest(request);
   const authorized = verifyNotificationReceiptSignature({
     rawBody,
@@ -109,7 +117,6 @@ export async function POST(request: Request) {
   }
 
   const receipts = normalizeAliyunPushedNotificationReceipts(parseRawBody(rawBody));
-  const client = createSupabaseServiceClient();
   const processed = [];
   let unmatched = 0;
 

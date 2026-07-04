@@ -63,4 +63,68 @@ describe("travel quote planning", () => {
     expect(quotePlan.selected.transport.amountCny).toBeGreaterThan(0);
     expect(quotePlan.selected.hotel.amountCny).toBeGreaterThan(0);
   });
+
+  it("applies travel preferences to transport and hotel selection", () => {
+    const quotePlan = buildTravelQuotePlan({
+      destination: "广州",
+      startDate: "2026-07-08",
+      dailyLimitCny: 2400,
+      preference: {
+        transportPriority: "fastest",
+        hotelStandard: "budget",
+        maxHotelDistanceKm: 3,
+      },
+      transportCandidates: [
+        {
+          id: "rail",
+          category: "transport",
+          provider: "携程",
+          title: "高铁",
+          amountCny: 500,
+          score: 95,
+          durationHours: 4.5,
+          rationale: "稳妥。",
+          url: "https://www.ctrip.com/?keyword=rail",
+        },
+        {
+          id: "flight",
+          category: "transport",
+          provider: "携程",
+          title: "航班",
+          amountCny: 700,
+          score: 82,
+          durationHours: 2,
+          rationale: "更快。",
+          url: "https://www.ctrip.com/?keyword=flight",
+        },
+      ],
+      hotelCandidates: [
+        {
+          id: "premium",
+          category: "hotel",
+          provider: "同程",
+          title: "高端酒店",
+          amountCny: 980,
+          score: 96,
+          distanceKm: 2,
+          rationale: "舒适。",
+          url: "https://www.ly.com/?keyword=premium",
+        },
+        {
+          id: "budget",
+          category: "hotel",
+          provider: "携程",
+          title: "商务酒店",
+          amountCny: 460,
+          score: 82,
+          distanceKm: 2.8,
+          rationale: "控费。",
+          url: "https://www.ctrip.com/?keyword=budget",
+        },
+      ],
+    });
+
+    expect(quotePlan.selected.transport.title).toBe("航班");
+    expect(quotePlan.selected.hotel.title).toBe("商务酒店");
+  });
 });

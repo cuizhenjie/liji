@@ -7,6 +7,10 @@ describe("cron authorization", () => {
     expect(isCronAuthorized(undefined, undefined)).toBe(true);
   });
 
+  it("requires a cron secret when service role is configured", () => {
+    expect(isCronAuthorized(undefined, undefined, "service-role")).toBe(false);
+  });
+
   it("requires bearer or header secret when configured", () => {
     const authorized = new Request("http://localhost/api/monthly-report", {
       headers: { authorization: "Bearer secret" },

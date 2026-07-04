@@ -10,6 +10,9 @@ describe("integration statuses", () => {
       SUPABASE_SERVICE_ROLE_KEY: "service",
       OPENAI_API_KEY: "openai",
       LIJI_CAPTURE_PROVIDER_CALLBACK_SECRET: "capture-callback",
+      LIJI_CAPTURE_PROVIDER_ALLOWED_IPS: "203.0.113.10",
+      LIJI_TRAVEL_QUOTE_ENDPOINT: "https://quotes.example.test",
+      MEITUAN_ORDER_API_ENDPOINT: "https://meituan.example.test/orders",
       NEXT_PUBLIC_VAPID_PUBLIC_KEY: undefined,
       JD_UNION_ID: undefined,
     });
@@ -17,6 +20,9 @@ describe("integration statuses", () => {
     expect(statuses.find((item) => item.provider === "supabase")?.mode).toBe("configured");
     expect(statuses.find((item) => item.provider === "openai")?.mode).toBe("configured");
     expect(statuses.find((item) => item.provider === "capture_provider_callback")?.mode).toBe("configured");
+    expect(statuses.find((item) => item.provider === "capture_provider_allowlist")?.mode).toBe("configured");
+    expect(statuses.find((item) => item.provider === "travel_quote_provider")?.mode).toBe("configured");
+    expect(statuses.find((item) => item.provider === "fulfillment_provider_sync")?.mode).toBe("configured");
     expect(statuses.find((item) => item.provider === "web_push")?.mode).toBe("missing");
     expect(statuses.find((item) => item.provider === "jd")?.mode).toBe("search-link");
   });

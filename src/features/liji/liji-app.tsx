@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import {
+  ActivityIcon,
   BellRingIcon,
   BotIcon,
   CalendarDaysIcon,
@@ -10,12 +11,16 @@ import {
   DownloadIcon,
   GiftIcon,
   HandCoinsIcon,
+  HistoryIcon,
   HomeIcon,
+  ListChecksIcon,
   Loader2Icon,
   LockKeyholeIcon,
+  MapPinnedIcon,
   NotebookPenIcon,
   PlaneIcon,
   PlusIcon,
+  ReceiptTextIcon,
   RotateCwIcon,
   SearchIcon,
   SendIcon,
@@ -88,6 +93,10 @@ import { buildPlanFulfillmentLinks } from "@/lib/liji/fulfillment";
 import { createUuid } from "@/lib/liji/ids";
 import type { IntegrationStatus } from "@/lib/liji/integrations";
 import {
+  buildLevelTwoRecommendationCards,
+  type LevelTwoRecommendationCard,
+} from "@/lib/liji/level2-recommendations";
+import {
   applyReviewedAiMemory,
   reviewWorkspaceAiMemory,
 } from "@/lib/liji/memory-review";
@@ -99,6 +108,7 @@ import {
 import { createDeletionRequest, exportWorkspaceData } from "@/lib/liji/privacy";
 import { registerBrowserPushSubscription } from "@/lib/liji/push";
 import { createSupabaseBrowserClient } from "@/lib/liji/supabase-browser";
+import type { TravelPreference } from "@/lib/liji/travel-options";
 import {
   acknowledgeEvent,
   acknowledgeNotificationLog,
@@ -125,7 +135,10 @@ type SectionId =
   | "calendar"
   | "fulfillment"
   | "finance"
+  | "ops"
   | "privacy";
+
+type IdentityMode = "all" | "family" | "business";
 
 type PrivacyToggleKey = Exclude<keyof PrivacySettings, "notificationPhone">;
 
@@ -143,7 +156,14 @@ const sectionItems: Array<{
   { id: "calendar", label: "日历", icon: CalendarDaysIcon },
   { id: "fulfillment", label: "履约", icon: GiftIcon },
   { id: "finance", label: "账单", icon: WalletCardsIcon },
+  { id: "ops", label: "运营", icon: ActivityIcon },
   { id: "privacy", label: "隐私", icon: LockKeyholeIcon },
+];
+
+const identityOptions: Array<{ value: IdentityMode; label: string }> = [
+  { value: "all", label: "全部" },
+  { value: "family", label: "家庭" },
+  { value: "business", label: "商务" },
 ];
 
 const currency = new Intl.NumberFormat("zh-CN", {
@@ -178,6 +198,34 @@ function captureSourceLabel(source: CaptureItem["sourceType"] | undefined) {
   };
 
   return map[source ?? "text"];
+}
+
+function identityLabel(mode: IdentityMode) {
+  return identityOptions.find((item) => item.value === mode)?.label ?? "全部";
+}
+
+function contactMatchesIdentity(contact: Contact, mode: IdentityMode) {
+  if (mode === "all") return true;
+  const haystack = [contact.relation, ...contact.labels].join(" ");
+  if (mode === "family") {
+    return /家人|父|母|女儿|儿子|伴侣|妻|夫|长辈|孩子/.test(haystack);
+  }
+
+  return /客户|合作|高管|公职|国企|商务|伙伴|董事|供应商/.test(haystack);
+}
+
+function eventMatchesIdentity(event: CalendarEvent, contacts: Contact[], mode: IdentityMode) {
+  if (mode === "all") return true;
+  const contact = contacts.find((item) => item.id === event.contactId);
+  if (contact) return contactMatchesIdentity(contact, mode);
+  return mode === "business" && event.source === "travel";
+}
+
+function planMatchesIdentity(plan: FulfillmentPlan, contacts: Contact[], mode: IdentityMode) {
+  if (mode === "all") return true;
+  const contact = contacts.find((item) => item.id === plan.contactId);
+  if (contact) return contactMatchesIdentity(contact, mode);
+  return mode === "business" && plan.scenario === "travel";
 }
 
 function statusText(status: CaptureItem["status"] | FulfillmentPlan["status"]) {
@@ -380,6 +428,8 @@ export function LijiApp({ initialData }: LijiAppProps) {
   const workspace = useWorkspace(initialData);
   const { data } = workspace;
   const [activeSection, setActiveSection] = useState<SectionId>("dashboard");
+  const [activeIdentity, setActiveIdentity] = useState<IdentityMode>("all");
+  const [selectedContactId, setSelectedContactId] = useState(initialData.contacts[0]?.id ?? "");
   const [captureText, setCaptureText] = useState("下周五是女儿5岁生日，预算2000元");
   const [captureSource, setCaptureSource] = useState<CaptureSource>("text");
   const [draftName, setDraftName] = useState("");
@@ -387,17 +437,47 @@ export function LijiApp({ initialData }: LijiAppProps) {
   const [draftLabels, setDraftLabels] = useState("重要客户,国企高管");
   const [draftPreference, setDraftPreference] = useState("");
   const [festivalBudget, setFestivalBudget] = useState("2000");
+  const [travelOrigin, setTravelOrigin] = useState("上海");
   const [travelDestination, setTravelDestination] = useState("广州");
+  const [travelStartDate, setTravelStartDate] = useState("2026-07-08");
+  const [travelEndDate, setTravelEndDate] = useState("2026-07-10");
   const [dailyLimit, setDailyLimit] = useState("2400");
+  const [travelTransportPriority, setTravelTransportPriority] = useState<NonNullable<TravelPreference["transportPriority"]>>("rail_under_5h");
+  const [travelHotelStandard, setTravelHotelStandard] = useState<NonNullable<TravelPreference["hotelStandard"]>>("business");
+  const [travelMealStandard, setTravelMealStandard] = useState<NonNullable<TravelPreference["mealStandard"]>>("business");
+  const [travelClientAddress, setTravelClientAddress] = useState("广州天河客户办公室");
   const [authEmail, setAuthEmail] = useState("");
   const [authUserEmail, setAuthUserEmail] = useState<string | null>(null);
   const [integrations, setIntegrations] = useState<IntegrationStatus[]>([]);
   const [isPending, startTransition] = useTransition();
 
-  const urgentEvents = useMemo(
-    () => data.events.filter((event) => event.reminderLevel === "level_1"),
-    [data.events]
+  const identityContacts = useMemo(
+    () => data.contacts.filter((contact) => contactMatchesIdentity(contact, activeIdentity)),
+    [activeIdentity, data.contacts]
   );
+  const identityEvents = useMemo(
+    () => data.events.filter((event) => eventMatchesIdentity(event, data.contacts, activeIdentity)),
+    [activeIdentity, data.contacts, data.events]
+  );
+  const identityPlans = useMemo(
+    () => data.plans.filter((plan) => planMatchesIdentity(plan, data.contacts, activeIdentity)),
+    [activeIdentity, data.contacts, data.plans]
+  );
+  const urgentEvents = useMemo(
+    () => identityEvents.filter((event) => event.reminderLevel === "level_1"),
+    [identityEvents]
+  );
+  const levelTwoCards = useMemo(
+    () => buildLevelTwoRecommendationCards({
+      data: { contacts: identityContacts, events: identityEvents },
+      now: new Date(),
+      horizonDays: 15,
+    }),
+    [identityContacts, identityEvents]
+  );
+  const effectiveSelectedContactId = identityContacts.some((contact) => contact.id === selectedContactId)
+    ? selectedContactId
+    : identityContacts[0]?.id ?? "";
   const pendingCaptures = data.captures.filter((item) => item.status === "pending");
   const relationshipBudget = data.budgets.find(
     (budget) => budget.category === "relationship"
@@ -607,10 +687,18 @@ export function LijiApp({ initialData }: LijiAppProps) {
   function generateBusinessTravelPlan() {
     const plan = generateTravelPlan({
       title: `${travelDestination}商务差旅方案`,
-      startDate: "2026-07-08",
-      endDate: "2026-07-10",
+      startDate: travelStartDate,
+      endDate: travelEndDate,
       destination: travelDestination,
       dailyLimitCny: Number(dailyLimit) || 2400,
+      preference: {
+        origin: travelOrigin,
+        transportPriority: travelTransportPriority,
+        hotelStandard: travelHotelStandard,
+        mealStandard: travelMealStandard,
+        clientAddress: travelClientAddress,
+        maxHotelDistanceKm: 3,
+      },
       now: new Date(),
     });
     workspace.setPlans((plans) => [plan, ...plans]);
@@ -623,6 +711,41 @@ export function LijiApp({ initialData }: LijiAppProps) {
       const result = (await response.json()) as { logs: NotificationLog[] };
       workspace.setNotificationLogs((logs) => [...result.logs, ...logs]);
       toast.success("提醒扫描完成");
+    });
+  }
+
+  async function runOpsJob(kind: "captureSla" | "notificationRetry" | "providerSync") {
+    const config = {
+      captureSla: {
+        path: "/api/capture/sla/run",
+        body: { limit: 20, staleMinutes: 30 },
+        success: "采集 SLA 扫描完成",
+      },
+      notificationRetry: {
+        path: "/api/notification-retries/run",
+        body: { limit: 20 },
+        success: "通知重试扫描完成",
+      },
+      providerSync: {
+        path: "/api/fulfillment/provider-sync",
+        body: { limit: 50 },
+        success: "联盟订单同步完成",
+      },
+    }[kind];
+
+    startTransition(async () => {
+      const response = await fetch(config.path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(config.body),
+      });
+      const result = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) {
+        toast.error(result.error ?? "运营任务执行失败");
+        return;
+      }
+
+      toast.success(config.success);
     });
   }
 
@@ -793,6 +916,16 @@ export function LijiApp({ initialData }: LijiAppProps) {
     toast.success("交易已入账并更新复盘");
   }
 
+  function addSmsCaptures(captures: CaptureItem[]) {
+    if (captures.length === 0) {
+      toast("没有可导入的短信账单");
+      return;
+    }
+
+    workspace.setCaptures((current) => [...captures, ...current]);
+    toast.success(`已导入 ${captures.length} 条短信到账单确认中心`);
+  }
+
   function updateBudgetLimit(budgetId: string, totalCny: number) {
     workspace.setData((current) => updateBudgetTotal(current, budgetId, totalCny));
   }
@@ -929,6 +1062,7 @@ export function LijiApp({ initialData }: LijiAppProps) {
                   <p className="text-sm text-muted-foreground">2026年7月1日 · Asia/Shanghai</p>
                   <h1 className="text-xl font-semibold tracking-normal">我的看板</h1>
                 </div>
+                <IdentitySwitcher value={activeIdentity} onChange={setActiveIdentity} />
                 <div className="flex items-center gap-2">
                   <Badge variant="outline" className="hidden md:inline-flex">
                     {workspace.storageState === "synced"
@@ -992,6 +1126,11 @@ export function LijiApp({ initialData }: LijiAppProps) {
               {activeSection === "dashboard" && (
                 <DashboardSection
                   data={data}
+                  contacts={identityContacts}
+                  events={identityEvents}
+                  plans={identityPlans}
+                  identity={identityLabel(activeIdentity)}
+                  levelTwoCards={levelTwoCards}
                   pendingCaptures={pendingCaptures}
                   relationshipBudget={relationshipBudget}
                   onConfirm={confirmCapture}
@@ -1004,6 +1143,10 @@ export function LijiApp({ initialData }: LijiAppProps) {
               {activeSection === "contacts" && (
                 <ContactsSection
                   data={data}
+                  contacts={identityContacts}
+                  events={identityEvents}
+                  plans={identityPlans}
+                  selectedContactId={effectiveSelectedContactId}
                   draftName={draftName}
                   draftRelation={draftRelation}
                   draftLabels={draftLabels}
@@ -1014,23 +1157,42 @@ export function LijiApp({ initialData }: LijiAppProps) {
                   onDraftPreference={setDraftPreference}
                   onAddContact={addContact}
                   onDeleteContact={deleteContact}
+                  onSelectContact={setSelectedContactId}
                   onCorrectMemory={correctMemory}
                   onUpdateMemory={updateMemoryContent}
                   memoryReviewPending={isPending}
                 />
               )}
               {activeSection === "calendar" && (
-                <CalendarSection data={data} onRunReminders={runReminderScanNow} />
+                <CalendarSection
+                  contacts={identityContacts}
+                  events={identityEvents}
+                  onRunReminders={runReminderScanNow}
+                />
               )}
               {activeSection === "fulfillment" && (
                 <FulfillmentSection
                   data={data}
                   festivalBudget={festivalBudget}
+                  travelOrigin={travelOrigin}
                   travelDestination={travelDestination}
+                  travelStartDate={travelStartDate}
+                  travelEndDate={travelEndDate}
                   dailyLimit={dailyLimit}
+                  travelTransportPriority={travelTransportPriority}
+                  travelHotelStandard={travelHotelStandard}
+                  travelMealStandard={travelMealStandard}
+                  travelClientAddress={travelClientAddress}
                   onFestivalBudget={setFestivalBudget}
+                  onTravelOrigin={setTravelOrigin}
                   onTravelDestination={setTravelDestination}
+                  onTravelStartDate={setTravelStartDate}
+                  onTravelEndDate={setTravelEndDate}
                   onDailyLimit={setDailyLimit}
+                  onTravelTransportPriority={setTravelTransportPriority}
+                  onTravelHotelStandard={setTravelHotelStandard}
+                  onTravelMealStandard={setTravelMealStandard}
+                  onTravelClientAddress={setTravelClientAddress}
                   onBirthdayPlan={generateBirthdayPlan}
                   onTravelPlan={generateBusinessTravelPlan}
                   onConfirmPlan={confirmPlan}
@@ -1043,6 +1205,16 @@ export function LijiApp({ initialData }: LijiAppProps) {
                   onAddBill={addFinanceBill}
                   onAddTransaction={addFinanceTransaction}
                   onUpdateBudget={updateBudgetLimit}
+                  onSmsCaptures={addSmsCaptures}
+                />
+              )}
+              {activeSection === "ops" && (
+                <OperationsSection
+                  data={data}
+                  integrations={integrations}
+                  onRunJob={runOpsJob}
+                  onNavigate={setActiveSection}
+                  pending={isPending}
                 />
               )}
               {activeSection === "privacy" && (
@@ -1079,7 +1251,7 @@ export function LijiApp({ initialData }: LijiAppProps) {
         </main>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t bg-background lg:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-7 border-t bg-background lg:hidden">
         {sectionItems.map((item) => (
           <button
             key={item.id}
@@ -1113,8 +1285,37 @@ function BrandBlock({ compact = false }: { compact?: boolean }) {
   );
 }
 
+function IdentitySwitcher({
+  value,
+  onChange,
+}: {
+  value: IdentityMode;
+  onChange: (value: IdentityMode) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1 rounded-md border bg-muted/40 p-1">
+      {identityOptions.map((option) => (
+        <Button
+          key={option.value}
+          size="sm"
+          variant={value === option.value ? "secondary" : "ghost"}
+          aria-pressed={value === option.value}
+          onClick={() => onChange(option.value)}
+        >
+          {option.label}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
 function DashboardSection(props: {
   data: WorkspaceData;
+  contacts: Contact[];
+  events: CalendarEvent[];
+  plans: FulfillmentPlan[];
+  identity: string;
+  levelTwoCards: LevelTwoRecommendationCard[];
   pendingCaptures: CaptureItem[];
   relationshipBudget: WorkspaceData["budgets"][number] | undefined;
   onConfirm: (capture: CaptureItem) => void;
@@ -1142,8 +1343,8 @@ function DashboardSection(props: {
         />
         <MetricCard
           title="Level 1"
-          value={String(data.events.filter((event) => event.reminderLevel === "level_1").length)}
-          detail="红线提醒"
+          value={String(props.events.filter((event) => event.reminderLevel === "level_1").length)}
+          detail={`${props.identity}红线提醒`}
           icon={BellRingIcon}
         />
       </div>
@@ -1257,7 +1458,7 @@ function DashboardSection(props: {
             </div>
           </CardContent>
           <CardFooter className="justify-between">
-            <span className="text-sm text-muted-foreground">最近方案：{data.plans[0]?.title}</span>
+            <span className="text-sm text-muted-foreground">最近方案：{props.plans[0]?.title ?? "待生成"}</span>
             <Button size="sm" variant="ghost" onClick={() => props.onNavigate("fulfillment")}>
               查看履约
             </Button>
@@ -1268,11 +1469,42 @@ function DashboardSection(props: {
       <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
         <Card>
           <CardHeader>
+            <CardTitle>Level 2 推荐卡片</CardTitle>
+            <CardDescription>提前 15 天进入每日方案推荐。</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col gap-3">
+              {props.levelTwoCards.length === 0 ? (
+                <EmptyLine title="暂无 Level 2 推荐" detail="当前身份视图 15 天内没有重要节日。" />
+              ) : (
+                props.levelTwoCards.slice(0, 3).map((card) => (
+                  <div key={card.id} className="rounded-lg border p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="font-medium">{card.title}</div>
+                      <Badge variant={card.priority === "today" ? "destructive" : "secondary"}>
+                        {card.daysUntil === 0 ? "今天" : `${card.daysUntil}天后`}
+                      </Badge>
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">{card.recommendation}</p>
+                    <div className="mt-3 flex flex-wrap gap-1">
+                      {card.actions.map((action) => (
+                        <Badge key={action} variant="outline">{action}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle>VIP 画像</CardTitle>
             <CardDescription>偏好、忌口、合规限制集中维护。</CardDescription>
           </CardHeader>
           <CardContent>
-            <ContactList contacts={data.contacts.slice(0, 3)} />
+            <ContactList contacts={props.contacts.slice(0, 3)} />
           </CardContent>
         </Card>
 
@@ -1298,6 +1530,10 @@ function DashboardSection(props: {
 
 function ContactsSection(props: {
   data: WorkspaceData;
+  contacts: Contact[];
+  events: CalendarEvent[];
+  plans: FulfillmentPlan[];
+  selectedContactId: string;
   draftName: string;
   draftRelation: string;
   draftLabels: string;
@@ -1308,10 +1544,21 @@ function ContactsSection(props: {
   onDraftPreference: (value: string) => void;
   onAddContact: () => void;
   onDeleteContact: (id: string) => void;
+  onSelectContact: (id: string) => void;
   onCorrectMemory: (id: string) => void;
   onUpdateMemory: (id: string, content: string) => void;
   memoryReviewPending: boolean;
 }) {
+  const selectedContact = props.contacts.find((contact) => contact.id === props.selectedContactId);
+  const contactEvents = selectedContact
+    ? props.events.filter((event) => event.contactId === selectedContact.id)
+    : [];
+  const giftHistory = selectedContact
+    ? props.plans
+        .filter((plan) => plan.contactId === selectedContact.id)
+        .flatMap((plan) => plan.items.filter((item) => item.category === "gift" || item.category === "cake" || item.category === "dining"))
+    : [];
+
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
       <Card>
@@ -1320,11 +1567,86 @@ function ContactsSection(props: {
           <CardDescription>家庭、客户、合作伙伴的长期偏好和合规边界。</CardDescription>
         </CardHeader>
         <CardContent>
-          <ContactList contacts={props.data.contacts} onDelete={props.onDeleteContact} />
+          <ContactList
+            contacts={props.contacts}
+            selectedId={props.selectedContactId}
+            onSelect={props.onSelectContact}
+            onDelete={props.onDeleteContact}
+          />
         </CardContent>
       </Card>
 
       <div className="flex flex-col gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>VIP 详情</CardTitle>
+            <CardDescription>基本信息、偏好、往期礼物和合规限制。</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!selectedContact ? (
+              <EmptyLine title="暂无选中 VIP" detail="当前身份视图没有联系人。" />
+            ) : (
+              <div className="flex flex-col gap-4">
+                <div className="flex items-start gap-3">
+                  <Avatar className="size-12">
+                    <AvatarFallback>{selectedContact.name.slice(0, 1)}</AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <div className="text-lg font-semibold">{selectedContact.name}</div>
+                    <div className="text-sm text-muted-foreground">{selectedContact.relation}</div>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {selectedContact.labels.map((label) => (
+                        <Badge key={label} variant="outline">{label}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 text-sm">
+                  <div className="rounded-md border p-3">
+                    <div className="font-medium">偏好矩阵</div>
+                    <div className="mt-1 text-muted-foreground">
+                      {selectedContact.preferences.map((item) => item.label).join("、") || "待补充"}
+                    </div>
+                  </div>
+                  <div className="rounded-md border p-3">
+                    <div className="font-medium">合规限制</div>
+                    <div className="mt-1 text-muted-foreground">{selectedContact.compliance.policyNote}</div>
+                  </div>
+                  <div className="rounded-md border p-3">
+                    <div className="flex items-center gap-2 font-medium">
+                      <HistoryIcon className="size-4" />
+                      往期礼物
+                    </div>
+                    <div className="mt-2 flex flex-col gap-2">
+                      {giftHistory.length === 0 ? (
+                        <span className="text-muted-foreground">暂无履约记录</span>
+                      ) : (
+                        giftHistory.slice(0, 4).map((item) => (
+                          <div key={item.id} className="flex justify-between gap-3 text-muted-foreground">
+                            <span>{item.title}</span>
+                            <span>{formatCny(item.amountCny)}</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                  <div className="rounded-md border p-3">
+                    <div className="font-medium">关联日程</div>
+                    <div className="mt-2 flex flex-col gap-1 text-muted-foreground">
+                      {contactEvents.length === 0
+                        ? "暂无关联日程"
+                        : contactEvents.slice(0, 3).map((event) => (
+                            <span key={event.id}>{event.date} · {event.title}</span>
+                          ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle>新增 VIP 画像</CardTitle>
@@ -1400,7 +1722,11 @@ function ContactsSection(props: {
   );
 }
 
-function CalendarSection(props: { data: WorkspaceData; onRunReminders: () => void }) {
+function CalendarSection(props: {
+  contacts: Contact[];
+  events: CalendarEvent[];
+  onRunReminders: () => void;
+}) {
   return (
     <Card>
       <CardHeader>
@@ -1426,8 +1752,8 @@ function CalendarSection(props: { data: WorkspaceData; onRunReminders: () => voi
             </TableRow>
           </TableHeader>
           <TableBody>
-            {props.data.events.map((event) => {
-              const contact = props.data.contacts.find((item) => item.id === event.contactId);
+            {props.events.map((event) => {
+              const contact = props.contacts.find((item) => item.id === event.contactId);
               return (
                 <TableRow key={event.id}>
                   <TableCell>{event.date}</TableCell>
@@ -1451,11 +1777,25 @@ function CalendarSection(props: { data: WorkspaceData; onRunReminders: () => voi
 function FulfillmentSection(props: {
   data: WorkspaceData;
   festivalBudget: string;
+  travelOrigin: string;
   travelDestination: string;
+  travelStartDate: string;
+  travelEndDate: string;
   dailyLimit: string;
+  travelTransportPriority: NonNullable<TravelPreference["transportPriority"]>;
+  travelHotelStandard: NonNullable<TravelPreference["hotelStandard"]>;
+  travelMealStandard: NonNullable<TravelPreference["mealStandard"]>;
+  travelClientAddress: string;
   onFestivalBudget: (value: string) => void;
+  onTravelOrigin: (value: string) => void;
   onTravelDestination: (value: string) => void;
+  onTravelStartDate: (value: string) => void;
+  onTravelEndDate: (value: string) => void;
   onDailyLimit: (value: string) => void;
+  onTravelTransportPriority: (value: NonNullable<TravelPreference["transportPriority"]>) => void;
+  onTravelHotelStandard: (value: NonNullable<TravelPreference["hotelStandard"]>) => void;
+  onTravelMealStandard: (value: NonNullable<TravelPreference["mealStandard"]>) => void;
+  onTravelClientAddress: (value: string) => void;
   onBirthdayPlan: () => void;
   onTravelPlan: () => void;
   onConfirmPlan: (planId: string) => void;
@@ -1490,14 +1830,83 @@ function FulfillmentSection(props: {
           </CardHeader>
           <CardContent>
             <FieldGroup>
-              <Field>
-                <FieldLabel>目的地</FieldLabel>
-                <Input value={props.travelDestination} onChange={(event) => props.onTravelDestination(event.target.value)} />
-              </Field>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <Field>
+                  <FieldLabel>出发地</FieldLabel>
+                  <Input value={props.travelOrigin} onChange={(event) => props.onTravelOrigin(event.target.value)} />
+                </Field>
+                <Field>
+                  <FieldLabel>目的地</FieldLabel>
+                  <Input value={props.travelDestination} onChange={(event) => props.onTravelDestination(event.target.value)} />
+                </Field>
+              </div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <Field>
+                  <FieldLabel>出发日期</FieldLabel>
+                  <Input value={props.travelStartDate} onChange={(event) => props.onTravelStartDate(event.target.value)} />
+                </Field>
+                <Field>
+                  <FieldLabel>返回日期</FieldLabel>
+                  <Input value={props.travelEndDate} onChange={(event) => props.onTravelEndDate(event.target.value)} />
+                </Field>
+              </div>
               <Field>
                 <FieldLabel>每日限额</FieldLabel>
                 <Input value={props.dailyLimit} onChange={(event) => props.onDailyLimit(event.target.value)} inputMode="numeric" />
               </Field>
+              <Field>
+                <FieldLabel>客户地址</FieldLabel>
+                <Input value={props.travelClientAddress} onChange={(event) => props.onTravelClientAddress(event.target.value)} />
+              </Field>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <Field>
+                  <FieldLabel>交通策略</FieldLabel>
+                  <Select
+                    value={props.travelTransportPriority}
+                    onValueChange={(value) => props.onTravelTransportPriority(value as NonNullable<TravelPreference["transportPriority"]>)}
+                  >
+                    <SelectTrigger aria-label="交通策略"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value="rail_under_5h">5小时内高铁</SelectItem>
+                        <SelectItem value="fastest">最快抵达</SelectItem>
+                        <SelectItem value="comfort">舒适优先</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field>
+                  <FieldLabel>住宿标准</FieldLabel>
+                  <Select
+                    value={props.travelHotelStandard}
+                    onValueChange={(value) => props.onTravelHotelStandard(value as NonNullable<TravelPreference["hotelStandard"]>)}
+                  >
+                    <SelectTrigger aria-label="住宿标准"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value="business">商务</SelectItem>
+                        <SelectItem value="premium">高端</SelectItem>
+                        <SelectItem value="budget">控费</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field>
+                  <FieldLabel>餐饮标准</FieldLabel>
+                  <Select
+                    value={props.travelMealStandard}
+                    onValueChange={(value) => props.onTravelMealStandard(value as NonNullable<TravelPreference["mealStandard"]>)}
+                  >
+                    <SelectTrigger aria-label="餐饮标准"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value="business">商务餐</SelectItem>
+                        <SelectItem value="standard">标准餐</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </Field>
+              </div>
               <Button onClick={props.onTravelPlan}>
                 <PlaneIcon data-icon="inline-start" />
                 生成旅行方案
@@ -1527,11 +1936,13 @@ function FinanceSection({
   onAddBill,
   onAddTransaction,
   onUpdateBudget,
+  onSmsCaptures,
 }: {
   data: WorkspaceData;
   onAddBill: (input: { title: string; amountCny: number; dueDay: number; accountLabel: string }) => void;
   onAddTransaction: (input: { title: string; amountCny: number; category: Transaction["category"] }) => void;
   onUpdateBudget: (budgetId: string, totalCny: number) => void;
+  onSmsCaptures: (captures: CaptureItem[]) => void;
 }) {
   const [billTitle, setBillTitle] = useState("物业/水电");
   const [billAmount, setBillAmount] = useState("680");
@@ -1540,6 +1951,7 @@ function FinanceSection({
   const [transactionTitle, setTransactionTitle] = useState("客户午餐");
   const [transactionAmount, setTransactionAmount] = useState("268");
   const [transactionCategory, setTransactionCategory] = useState<Transaction["category"]>("relationship");
+  const [smsImportText, setSmsImportText] = useState("【招商银行】您尾号8621账户房贷扣款12800元，交易时间2026-07-02。");
 
   function submitBill() {
     const amountCny = Number(billAmount);
@@ -1571,8 +1983,54 @@ function FinanceSection({
     });
   }
 
+  async function submitSmsImport() {
+    if (!smsImportText.trim()) {
+      toast.error("请粘贴短信账单内容");
+      return;
+    }
+
+    const response = await fetch("/api/capture/sms-import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: smsImportText }),
+    });
+    const payload = (await response.json().catch(() => ({}))) as {
+      captures?: CaptureItem[];
+      error?: string;
+    };
+    if (!response.ok || !payload.captures) {
+      toast.error(payload.error ?? "短信导入失败");
+      return;
+    }
+
+    onSmsCaptures(payload.captures);
+  }
+
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      <Card>
+        <CardHeader>
+          <CardTitle>短信账单导入</CardTitle>
+          <CardDescription>原生壳或短信 webhook 可写入确认中心。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <FieldGroup>
+            <Field>
+              <FieldLabel>短信内容</FieldLabel>
+              <Textarea
+                value={smsImportText}
+                onChange={(event) => setSmsImportText(event.target.value)}
+                rows={4}
+              />
+            </Field>
+            <Button onClick={submitSmsImport}>
+              <ReceiptTextIcon data-icon="inline-start" />
+              导入确认中心
+            </Button>
+          </FieldGroup>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>定期账单托管</CardTitle>
@@ -1697,6 +2155,151 @@ function FinanceSection({
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function OperationsSection({
+  data,
+  integrations,
+  onRunJob,
+  onNavigate,
+  pending,
+}: {
+  data: WorkspaceData;
+  integrations: IntegrationStatus[];
+  onRunJob: (kind: "captureSla" | "notificationRetry" | "providerSync") => void;
+  onNavigate: (section: SectionId) => void;
+  pending: boolean;
+}) {
+  const failedNotifications = data.notificationLogs.filter((log) => log.status === "failed");
+  const pendingOcrAsr = data.captures.filter((capture) =>
+    capture.status === "pending" && capture.sourceType !== "text"
+  );
+  const reviewMemories = data.aiMemories.filter((memory) =>
+    memory.reviewStatus === "stale" || memory.reviewStatus === "review_required"
+  );
+  const riskyPlans = data.plans.filter((plan) => plan.riskLevel !== "low");
+  const serviceReadiness = integrations.filter((item) =>
+    item.provider === "capture_provider_callback" ||
+    item.provider === "capture_provider_allowlist" ||
+    item.provider === "fulfillment_provider_sync" ||
+    item.provider === "travel_quote_provider"
+  );
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <MetricCard title="采集待处理" value={String(pendingOcrAsr.length)} detail="OCR/ASR/账单" icon={ClipboardCheckIcon} />
+        <MetricCard title="通知异常" value={String(failedNotifications.length)} detail="短信/语音失败" icon={BellRingIcon} />
+        <MetricCard title="记忆复核" value={String(reviewMemories.length)} detail="待批处理" icon={NotebookPenIcon} />
+        <MetricCard title="履约风险" value={String(riskyPlans.length)} detail="预算/合规" icon={GiftIcon} />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <Card>
+          <CardHeader>
+            <CardTitle>运营处理台</CardTitle>
+            <CardDescription>人工补录、批量复核、通知重试与联盟拉单。</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <OpsAction
+                title="OCR/ASR SLA"
+                detail={`${pendingOcrAsr.length} 项采集可能需要补录或释放`}
+                icon={ListChecksIcon}
+                disabled={pending}
+                onClick={() => onRunJob("captureSla")}
+              />
+              <OpsAction
+                title="通知异常重试"
+                detail={`${failedNotifications.length} 条失败投递待处理`}
+                icon={BellRingIcon}
+                disabled={pending}
+                onClick={() => onRunJob("notificationRetry")}
+              />
+              <OpsAction
+                title="AI 记忆批处理"
+                detail={`${reviewMemories.length} 条待复核记忆`}
+                icon={NotebookPenIcon}
+                disabled={pending}
+                onClick={() => onNavigate("contacts")}
+              />
+              <OpsAction
+                title="联盟订单拉单"
+                detail="同步电商/本地生活/商旅结算订单"
+                icon={ActivityIcon}
+                disabled={pending}
+                onClick={() => onRunJob("providerSync")}
+              />
+            </div>
+          </CardContent>
+          <CardFooter className="justify-between">
+            <Button variant="outline" onClick={() => onNavigate("contacts")}>
+              <NotebookPenIcon data-icon="inline-start" />
+              处理记忆
+            </Button>
+            <Button variant="outline" onClick={() => onNavigate("finance")}>
+              <ReceiptTextIcon data-icon="inline-start" />
+              查看账单
+            </Button>
+          </CardFooter>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>真实服务就绪</CardTitle>
+            <CardDescription>provider 账号、白名单与同步能力。</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col gap-2">
+              {serviceReadiness.map((item) => (
+                <div key={item.provider} className="rounded-md border p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 font-medium">
+                      <MapPinnedIcon className="size-4 text-primary" />
+                      {item.label}
+                    </div>
+                    <Badge variant={item.mode === "configured" ? "secondary" : "outline"}>
+                      {item.mode === "configured" ? "已配置" : item.mode === "search-link" ? "跳转/候选" : "未配置"}
+                    </Badge>
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.detail}</p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function OpsAction({
+  title,
+  detail,
+  icon: Icon,
+  disabled,
+  onClick,
+}: {
+  title: string;
+  detail: string;
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="flex min-h-28 items-start gap-3 rounded-lg border p-4 text-left transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <Icon className="mt-1 size-5 text-primary" />
+      <span>
+        <span className="block font-medium">{title}</span>
+        <span className="mt-1 block text-sm leading-6 text-muted-foreground">{detail}</span>
+      </span>
+    </button>
   );
 }
 
@@ -1969,17 +2572,29 @@ function MetricCard(props: {
 
 function ContactList({
   contacts,
+  selectedId,
+  onSelect,
   onDelete,
 }: {
   contacts: Contact[];
+  selectedId?: string;
+  onSelect?: (id: string) => void;
   onDelete?: (id: string) => void;
 }) {
   return (
     <div className="flex flex-col gap-3">
       {contacts.map((contact) => (
-        <div key={contact.id} className="rounded-lg border p-3">
+        <div
+          key={contact.id}
+          className="rounded-lg border p-3 data-[selected=true]:border-primary data-[selected=true]:bg-primary/5"
+          data-selected={selectedId === contact.id}
+        >
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="flex items-start gap-3">
+            <button
+              type="button"
+              className="flex min-w-0 flex-1 items-start gap-3 text-left"
+              onClick={() => onSelect?.(contact.id)}
+            >
               <Avatar className="size-10">
                 <AvatarFallback>{contact.name.slice(0, 1)}</AvatarFallback>
               </Avatar>
@@ -1994,7 +2609,7 @@ function ContactList({
                   ))}
                 </div>
               </div>
-            </div>
+            </button>
             {onDelete && (
               <Button size="icon-sm" variant="ghost" aria-label={`删除 ${contact.name}`} onClick={() => onDelete(contact.id)}>
                 <Trash2Icon />

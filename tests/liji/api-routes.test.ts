@@ -8,12 +8,15 @@ import { POST as manualCompleteCapture } from "../../src/app/api/capture/manual-
 import { POST as captureProviderCallback } from "../../src/app/api/capture/provider-callback/route";
 import { POST as processCaptureJobs } from "../../src/app/api/capture/process-jobs/route";
 import { POST as runCaptureSla } from "../../src/app/api/capture/sla/run/route";
+import { POST as importSmsCapture } from "../../src/app/api/capture/sms-import/route";
 import { GET as getComplianceRules } from "../../src/app/api/compliance/rules/route";
 import { POST as embedAiMemories } from "../../src/app/api/ai-memories/embed/route";
 import { POST as maintainAiMemories } from "../../src/app/api/ai-memories/maintenance/route";
 import { POST as reviewAiMemory } from "../../src/app/api/ai-memories/review/route";
 import { POST as fulfillmentCallback } from "../../src/app/api/fulfillment/callback/route";
 import { POST as clickFulfillment } from "../../src/app/api/fulfillment/click/route";
+import { GET as exportFulfillment } from "../../src/app/api/fulfillment/export/route";
+import { POST as providerSyncFulfillment } from "../../src/app/api/fulfillment/provider-sync/route";
 import { POST as reconcileFulfillment } from "../../src/app/api/fulfillment/reconcile/route";
 import { POST as generatePlan } from "../../src/app/api/generate-plan/route";
 import { GET as getHealth } from "../../src/app/api/health/route";
@@ -27,12 +30,14 @@ import { POST as deletePrivacy } from "../../src/app/api/privacy/delete/route";
 import { GET as exportPrivacy } from "../../src/app/api/privacy/export/route";
 import { POST as savePrivacySettings } from "../../src/app/api/privacy/settings/route";
 import { POST as sendNotification } from "../../src/app/api/send-notification/route";
+import { GET as getLevel2Recommendations } from "../../src/app/api/recommendations/level2/route";
 import { POST as pushNotificationReceipts } from "../../src/app/api/notification-receipts/push/route";
 import { POST as runNotificationReceipts } from "../../src/app/api/notification-receipts/run/route";
 import { POST as runNotificationRetries } from "../../src/app/api/notification-retries/run/route";
 import { POST as runReminderEscalations } from "../../src/app/api/reminder-escalations/run/route";
 import { GET as getWorkspace } from "../../src/app/api/workspace/route";
 import { POST as syncWorkspace } from "../../src/app/api/workspace/sync/route";
+import { POST as getTravelQuotes } from "../../src/app/api/travel/quotes/route";
 import { demoWorkspace } from "../../src/lib/liji/sample-data";
 
 function jsonRequest(path: string, body: unknown) {
@@ -46,6 +51,7 @@ function jsonRequest(path: string, body: unknown) {
 describe("productization API routes", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   });
 
   it("redirects auth callbacks back into the app", async () => {
@@ -153,6 +159,19 @@ describe("productization API routes", () => {
       new Request("http://localhost/api/monthly-insight?period=2026-05")
     );
     const customInsight = await customInsightResponse.json();
+    const level2Response = await getLevel2Recommendations(
+      new Request("http://localhost/api/recommendations/level2?now=2026-07-01T09:00:00%2B08:00")
+    );
+    const level2 = await level2Response.json();
+    const travelQuotesResponse = await getTravelQuotes(
+      jsonRequest("/api/travel/quotes", {
+        destination: "广州",
+        startDate: "2026-07-08",
+        endDate: "2026-07-10",
+        preference: { transportPriority: "rail_under_5h", hotelStandard: "business" },
+      })
+    );
+    const travelQuotes = await travelQuotesResponse.json();
 
     expect(extracted.extraction.extractedText).toContain("周明");
     expect(parsed.source).toBe("demo");
@@ -165,6 +184,118 @@ describe("productization API routes", () => {
     expect(insight.source).toBe("demo");
     expect(insight.insight.healthScore).toBeGreaterThan(0);
     expect(customInsight.insight.period).toBe("2026-05");
+    expect(level2.source).toBe("demo");
+    expect(level2.cards[0].eventId).toBe("e-daughter-birthday");
+    expect(travelQuotes.source).toBe("demo");
+    expect(travelQuotes.plan.selected.transport.amountCny).toBeGreaterThan(0);
+  });
+
+  it("does not allow anonymous demo requests to invoke cloud parsing", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "test-key");
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const parseResponse = await parseInput(
+      jsonRequest("/api/parse-input", {
+        text: "下周五是女儿5岁生日，预算2000元",
+        allowCloudModel: true,
+      })
+    );
+    const parsed = await parseResponse.json();
+    const smsResponse = await importSmsCapture(
+      jsonRequest("/api/capture/sms-import", {
+        text: "【招商银行】您尾号8621账户房贷扣款12800元，交易时间2026-07-02。",
+        allowCloudModel: true,
+      })
+    );
+    const sms = await smsResponse.json();
+
+    expect(parsed.source).toBe("demo");
+    expect(parsed.provider).toBe("local-rules");
+    expect(sms.source).toBe("demo");
+    expect(sms.captures[0].parsed.intent).toBe("bill");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not call travel quote providers for anonymous demo requests", async () => {
+    vi.stubEnv("LIJI_TRAVEL_QUOTE_ENDPOINT", "https://quotes.example.test");
+    vi.resetModules();
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const { POST: postTravelQuotes } = await import("../../src/app/api/travel/quotes/route");
+
+    const response = await postTravelQuotes(
+      jsonRequest("/api/travel/quotes", {
+        destination: "广州",
+        startDate: "2026-07-08",
+        preference: { clientAddress: "广州天河客户办公室" },
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload.source).toBe("demo");
+    expect(payload.providerSkipped).toBe("third_party_quote_not_authorized");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("requires capture callback secrets before persisted provider callbacks", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-role");
+    vi.resetModules();
+    const { POST: postCaptureProviderCallback } = await import("../../src/app/api/capture/provider-callback/route");
+
+    const response = await postCaptureProviderCallback(
+      jsonRequest("/api/capture/provider-callback", {
+        jobId: "capjob-1",
+        status: "completed",
+        extractedText: "周明下次宴请不吃香菜",
+      })
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(payload.error).toContain("LIJI_CAPTURE_PROVIDER_CALLBACK_SECRET");
+  });
+
+  it("requires fulfillment callback secrets before persisted order callbacks", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-role");
+    vi.resetModules();
+    const { POST: postFulfillmentCallback } = await import("../../src/app/api/fulfillment/callback/route");
+
+    const response = await postFulfillmentCallback(
+      jsonRequest("/api/fulfillment/callback", {
+        provider: "jd",
+        externalOrderId: "order-1",
+        status: "paid",
+        amountCny: 1200,
+      })
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(payload.error).toContain("FULFILLMENT_CALLBACK_SECRET");
+  });
+
+  it("requires receipt callback secrets before persisted notification receipts", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-role");
+    vi.resetModules();
+    const { POST: postNotificationReceipts } = await import("../../src/app/api/notification-receipts/push/route");
+
+    const response = await postNotificationReceipts(
+      jsonRequest("/api/notification-receipts/push", [
+        {
+          phone_number: "13811110000",
+          success: true,
+          biz_id: "biz-1",
+        },
+      ])
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(payload.msg).toContain("LIJI_NOTIFICATION_RECEIPT_CALLBACK_SECRET");
   });
 
   it("returns integration status without exposing secrets", async () => {
@@ -341,6 +472,20 @@ describe("productization API routes", () => {
     expect(payload.capture.rawText).toContain("周明");
   });
 
+  it("imports SMS bills into pending captures in demo mode", async () => {
+    const response = await importSmsCapture(
+      jsonRequest("/api/capture/sms-import", {
+        text: "【招商银行】您尾号8621账户房贷扣款12800元，交易时间2026-07-02。",
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload.source).toBe("demo");
+    expect(payload.bridge).toBe("native_sms_bridge");
+    expect(payload.captures[0].sourceType).toBe("bill");
+    expect(payload.captures[0].status).toBe("pending");
+  });
+
   it("serves compliance rules and demo workers without Supabase", async () => {
     const complianceResponse = await getComplianceRules(
       new Request("http://localhost/api/compliance/rules?label=国企高管")
@@ -370,6 +515,14 @@ describe("productization API routes", () => {
       jsonRequest("/api/fulfillment/reconcile", { period: "2026-07", limit: 5 })
     );
     const fulfillmentReconcile = await fulfillmentReconcileResponse.json();
+    const providerSyncResponse = await providerSyncFulfillment(
+      jsonRequest("/api/fulfillment/provider-sync", { limit: 5 })
+    );
+    const providerSync = await providerSyncResponse.json();
+    const fulfillmentExportResponse = await exportFulfillment(
+      new Request("http://localhost/api/fulfillment/export?period=2026-07")
+    );
+    const fulfillmentExportCsv = await fulfillmentExportResponse.text();
     const maintenanceResponse = await maintainAiMemories(
       jsonRequest("/api/ai-memories/maintenance", { limitUsers: 5, embedMissing: false })
     );
@@ -386,6 +539,10 @@ describe("productization API routes", () => {
     expect(retryWorker.processed[0].retryCount).toBe(1);
     expect(fulfillmentReconcile.source).toBe("demo");
     expect(fulfillmentReconcile.reports[0].summary.refundedOrders).toBe(1);
+    expect(providerSync.source).toBe("demo");
+    expect(providerSync.imported[0].externalOrderId).toBeDefined();
+    expect(fulfillmentExportResponse.headers.get("content-type")).toContain("text/csv");
+    expect(fulfillmentExportCsv).toContain("external_order_id");
     expect(maintenance.source).toBe("demo");
     expect(maintenance.processed[0].reviews.length).toBeGreaterThan(0);
   });

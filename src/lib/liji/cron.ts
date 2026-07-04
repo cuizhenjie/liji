@@ -1,8 +1,12 @@
 import { env } from "./env";
 
-export function isCronAuthorized(request: Request | undefined, secret = env.CRON_SECRET) {
+export function isCronAuthorized(
+  request: Request | undefined,
+  secret = env.CRON_SECRET,
+  serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY
+) {
   if (!secret) {
-    return true;
+    return !serviceRoleKey;
   }
 
   const authorization = request?.headers.get("authorization");

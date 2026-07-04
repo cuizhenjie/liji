@@ -68,7 +68,7 @@ export function getReadinessChecks(
       category: "ops",
       requiredForProduction: true,
       ok: has(env.CRON_SECRET),
-      detail: env.CRON_SECRET ? "Cron 请求需要携带密钥。" : "未配置 CRON_SECRET，生产环境会允许无密钥 Cron 调用。",
+      detail: env.CRON_SECRET ? "Cron 请求需要携带密钥。" : "未配置 CRON_SECRET，service role 环境会拒绝 Cron 写任务。",
     }),
     check({
       id: "openai",
@@ -188,7 +188,7 @@ export function getReadinessChecks(
       category: "fulfillment",
       requiredForProduction: true,
       ok: has(env.FULFILLMENT_CALLBACK_SECRET),
-      detail: env.FULFILLMENT_CALLBACK_SECRET ? "第三方履约回调需要 HMAC 签名。" : "未配置 FULFILLMENT_CALLBACK_SECRET，回调签名不会被强制校验。",
+      detail: env.FULFILLMENT_CALLBACK_SECRET ? "第三方履约回调需要 HMAC 签名。" : "未配置 FULFILLMENT_CALLBACK_SECRET，生产落库会拒绝履约回调。",
     }),
     check({
       id: "jd-cps",

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createCaptureExtractionOpsAlert,
+  isCaptureProviderCallbackSourceAllowed,
   isCaptureExtractionJobDue,
   normalizeCaptureProviderCallback,
   planCaptureExtractionRetry,
@@ -65,6 +66,34 @@ describe("capture extraction jobs", () => {
     expect(verifyCaptureProviderCallbackSignature({ rawBody, secret: "secret", signature: "bad" })).toBe(false);
     expect(verifyCaptureProviderCallbackSignature({ rawBody, secret: "secret", token: "secret" })).toBe(true);
     expect(verifyCaptureProviderCallbackSignature({ rawBody })).toBe(true);
+  });
+
+  it("checks provider callback source IP allowlists", () => {
+    const allowedRequest = new Request("http://localhost/api/capture/provider-callback", {
+      headers: { "x-forwarded-for": "203.0.113.10, 10.0.0.1" },
+    });
+    const deniedRequest = new Request("http://localhost/api/capture/provider-callback", {
+      headers: { "x-real-ip": "198.51.100.2" },
+    });
+    const spoofedProviderIpRequest = new Request("http://localhost/api/capture/provider-callback", {
+      headers: { "x-provider-ip": "203.0.113.10" },
+    });
+
+    expect(isCaptureProviderCallbackSourceAllowed({
+      request: allowedRequest,
+      allowedIps: "203.0.113.10,198.51.100.1",
+    }).allowed).toBe(true);
+    expect(isCaptureProviderCallbackSourceAllowed({
+      request: deniedRequest,
+      allowedIps: "203.0.113.10",
+    }).allowed).toBe(false);
+    expect(isCaptureProviderCallbackSourceAllowed({
+      request: spoofedProviderIpRequest,
+      allowedIps: "203.0.113.10",
+    }).allowed).toBe(false);
+    expect(isCaptureProviderCallbackSourceAllowed({
+      request: deniedRequest,
+    }).allowed).toBe(true);
   });
 
   it("detects due retry jobs and plans exponential backoff", () => {

@@ -16,6 +16,12 @@ const requestSchema = z.object({
   startDate: z.string().optional(),
   endDate: z.string().optional(),
   destination: z.string().optional(),
+  origin: z.string().optional(),
+  transportPriority: z.enum(["rail_under_5h", "fastest", "comfort"]).optional(),
+  hotelStandard: z.enum(["business", "premium", "budget"]).optional(),
+  mealStandard: z.enum(["standard", "business"]).optional(),
+  clientAddress: z.string().optional(),
+  maxHotelDistanceKm: z.number().positive().optional(),
   budgetCny: z.number().optional(),
   dailyLimitCny: z.number().optional(),
 });
@@ -90,6 +96,14 @@ export async function POST(request: Request) {
     endDate: body.endDate ?? "2026-07-10",
     destination: body.destination ?? "广州",
     dailyLimitCny: body.dailyLimitCny,
+    preference: {
+      origin: body.origin,
+      transportPriority: body.transportPriority,
+      hotelStandard: body.hotelStandard,
+      mealStandard: body.mealStandard,
+      clientAddress: body.clientAddress,
+      maxHotelDistanceKm: body.maxHotelDistanceKm,
+    },
     now,
   });
 

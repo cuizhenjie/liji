@@ -44,6 +44,13 @@ const callbackSchema = z.object({
 export async function POST(request: Request) {
   const rawBody = await request.text();
   const signature = request.headers.get("x-liji-signature");
+  const supabase = createSupabaseServiceClient();
+
+  if (supabase && !env.FULFILLMENT_CALLBACK_SECRET) {
+    return Response.json({
+      error: "FULFILLMENT_CALLBACK_SECRET is required for persisted fulfillment callbacks",
+    }, { status: 401 });
+  }
 
   if (
     !verifyFulfillmentCallbackSignature({
@@ -61,7 +68,6 @@ export async function POST(request: Request) {
     ...body,
     receivedAt: new Date().toISOString(),
   };
-  const supabase = createSupabaseServiceClient();
   let persisted = false;
   let userId: string | null = null;
 

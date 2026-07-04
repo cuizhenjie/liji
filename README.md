@@ -11,7 +11,7 @@
 - 账单复盘：固定账单、交易聚合、月度生活与人情往来复盘。
 - 隐私授权：PII 脱敏、云端模型、Web Push、短信、语音、第三方跳转开关。
 
-首版只做“推荐 + 跳转履约”，不做自动支付、全自动下单、原生短信监听或多人 B 端协作。
+首版只做“推荐 + 跳转履约”，不做自动支付、全自动下单、Web 直接原生短信监听或多人 B 端协作；短信账单可通过原生壳或短信 webhook 导入确认中心。
 
 ## 开发
 
@@ -61,13 +61,21 @@ npx playwright install chromium webkit
 - 履约对账：履约回调支持结算状态、佣金、退款冲正字段，`/api/fulfillment/reconcile` 可按月生成订单净额、佣金、退款和风险标记报表。
 - 运营兜底：`/api/notification-retries/run` 支持短信/语音失败后限次重试和耗尽告警，`/api/capture/sla/run` 支持 OCR/ASR 超时 SLA 告警与卡住任务释放。
 - 人工补录与批量记忆：`/api/capture/manual-complete` 可人工补录 OCR/ASR 结果并关闭告警，`/api/ai-memories/batch` 支持批量复核、忽略、删除和重新 embedding 标记。
+- 多身份与 VIP 详情：看板、人脉和日历支持全部/家庭/商务视图切换；VIP 详情展示偏好、合规、关联日程和往期礼物。
+- Level 2 推荐卡片：`/api/recommendations/level2` 与看板会按 15 天窗口生成每日推荐卡片，辅助提前锁定礼物/餐饮/预算。
+- 差旅偏好与报价：差旅方案支持出发地、起止日期、交通策略、住宿标准、餐饮标准和客户地址；`/api/travel/quotes` 可接外部报价 provider，未配置时回退内置候选。
+- 短信账单导入：`/api/capture/sms-import` 承接原生壳或短信 webhook 传入的账单短信，解析后进入待确认队列。
+- 联盟拉单与财务导出：`/api/fulfillment/provider-sync` 支持京东/淘宝/美团/携程/同程订单 API 拉单、HMAC 签名和字段归一化；`/api/fulfillment/export` 可导出履约对账 CSV。
+- 运营台 UI：新增运营页，集中处理 OCR/ASR SLA、通知异常重试、AI 记忆批量处理、联盟订单同步和真实服务就绪状态。
+- OCR/ASR 回调白名单：`/api/capture/provider-callback` 可通过 `LIJI_CAPTURE_PROVIDER_ALLOWED_IPS` 校验 provider 来源 IP。
 
 ## 下一批待接真实服务
 
-- 接入真实 OCR/ASR provider 账号、回调地址白名单、供应商 SLA 监控和人工补录运营台。
-- 建设运营台 UI：OCR/ASR 人工补录列表、AI 记忆批量处理列表、通知异常告警面板。
+- 配置真实 OCR/ASR provider 账号、正式回调域名和供应商白名单 IP，并沉淀人工补录 SOP。
+- 配置京东/淘宝/美团/携程/同程真实订单 API、签名密钥和结算周期，补结算差异人工处理台。
 - 增强通知治理：按供应商错误码分级、用户退订/停呼策略、异常模板自动熔断。
-- 接入电商/本地生活/商旅真实联盟 API 拉单、平台签名验签、结算差异人工处理台和财务导出。
+- 原生端增强：移动端短信读取权限、长按录音、附件上传进度和 PWA 安装后的系统级降级策略。
+- 商业化闭环：会员订阅、紧急呼叫权益计量、CPS 结算审核和财务对账审批。
 
 ## 环境变量
 
@@ -92,8 +100,11 @@ LIJI_CAPTURE_OCR_PROVIDER=
 LIJI_CAPTURE_ASR_PROVIDER=
 LIJI_CAPTURE_PROVIDER_ENDPOINT=
 LIJI_CAPTURE_PROVIDER_CALLBACK_SECRET=
+LIJI_CAPTURE_PROVIDER_ALLOWED_IPS=
 LIJI_CAPTURE_STORAGE_BUCKET=
 LIJI_CAPTURE_STORAGE_SIGNED_URL_TTL_SECONDS=
+LIJI_TRAVEL_QUOTE_ENDPOINT=
+LIJI_TRAVEL_QUOTE_SECRET=
 ALIYUN_ACCESS_KEY_ID=
 ALIYUN_ACCESS_KEY_SECRET=
 ALIYUN_REGION_ID=
@@ -107,6 +118,16 @@ MEITUAN_CPS_ID=
 CTRIP_AFFILIATE_ID=
 TONGCHENG_AFFILIATE_ID=
 FULFILLMENT_CALLBACK_SECRET=
+JD_UNION_ORDER_API_ENDPOINT=
+JD_UNION_ORDER_API_SECRET=
+TAOBAO_ORDER_API_ENDPOINT=
+TAOBAO_ORDER_API_SECRET=
+MEITUAN_ORDER_API_ENDPOINT=
+MEITUAN_ORDER_API_SECRET=
+CTRIP_ORDER_API_ENDPOINT=
+CTRIP_ORDER_API_SECRET=
+TONGCHENG_ORDER_API_ENDPOINT=
+TONGCHENG_ORDER_API_SECRET=
 ```
 
 ## 数据库

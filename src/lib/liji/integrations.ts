@@ -10,6 +10,9 @@ export type IntegrationStatus = {
     | "aliyun_ocr"
     | "aliyun_asr"
     | "capture_provider_callback"
+    | "capture_provider_allowlist"
+    | "travel_quote_provider"
+    | "fulfillment_provider_sync"
     | "jd"
     | "taobao"
     | "meituan"
@@ -48,6 +51,13 @@ export function getIntegrationStatuses(
   );
   const hasCaptureProviderCallback = Boolean(
     env.SUPABASE_SERVICE_ROLE_KEY && env.LIJI_CAPTURE_PROVIDER_CALLBACK_SECRET
+  );
+  const hasAnyFulfillmentSync = Boolean(
+    env.JD_UNION_ORDER_API_ENDPOINT ||
+      env.TAOBAO_ORDER_API_ENDPOINT ||
+      env.MEITUAN_ORDER_API_ENDPOINT ||
+      env.CTRIP_ORDER_API_ENDPOINT ||
+      env.TONGCHENG_ORDER_API_ENDPOINT
   );
 
   return [
@@ -133,6 +143,33 @@ export function getIntegrationStatuses(
       detail: hasCaptureProviderCallback
         ? "Provider 异步回调可验签、回写确认中心并触发失败重试。"
         : "未配置回调密钥或服务端落库权限，provider 回调只能 demo 接收。",
+    },
+    {
+      provider: "capture_provider_allowlist",
+      label: "OCR/ASR 回调白名单",
+      category: "ai",
+      mode: env.LIJI_CAPTURE_PROVIDER_ALLOWED_IPS ? "configured" : "missing",
+      detail: env.LIJI_CAPTURE_PROVIDER_ALLOWED_IPS
+        ? "Provider 回调会校验 x-forwarded-for/x-real-ip 来源。"
+        : "未配置来源 IP 白名单，仅依赖回调签名。",
+    },
+    {
+      provider: "travel_quote_provider",
+      label: "差旅实时报价",
+      category: "fulfillment",
+      mode: env.LIJI_TRAVEL_QUOTE_ENDPOINT ? "configured" : "search-link",
+      detail: env.LIJI_TRAVEL_QUOTE_ENDPOINT
+        ? "差旅报价可从外部 provider 拉取后再做限额拆解。"
+        : "当前使用内置候选和携程/同程搜索跳转。",
+    },
+    {
+      provider: "fulfillment_provider_sync",
+      label: "联盟订单拉单",
+      category: "fulfillment",
+      mode: hasAnyFulfillmentSync ? "configured" : "missing",
+      detail: hasAnyFulfillmentSync
+        ? "已配置至少一个平台订单 API，可定时拉单并进入结算对账。"
+        : "未配置平台订单 API，履约结算依赖回调或 demo 对账。",
     },
     {
       provider: "jd",

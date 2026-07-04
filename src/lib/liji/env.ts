@@ -18,8 +18,11 @@ const envSchema = z.object({
   LIJI_CAPTURE_ASR_PROVIDER: z.string().min(1).optional(),
   LIJI_CAPTURE_PROVIDER_ENDPOINT: z.string().url().optional(),
   LIJI_CAPTURE_PROVIDER_CALLBACK_SECRET: z.string().min(1).optional(),
+  LIJI_CAPTURE_PROVIDER_ALLOWED_IPS: z.string().min(1).optional(),
   LIJI_CAPTURE_STORAGE_BUCKET: z.string().min(1).optional(),
   LIJI_CAPTURE_STORAGE_SIGNED_URL_TTL_SECONDS: z.string().min(1).optional(),
+  LIJI_TRAVEL_QUOTE_ENDPOINT: z.string().url().optional(),
+  LIJI_TRAVEL_QUOTE_SECRET: z.string().min(1).optional(),
   ALIYUN_ACCESS_KEY_ID: z.string().min(1).optional(),
   ALIYUN_ACCESS_KEY_SECRET: z.string().min(1).optional(),
   ALIYUN_REGION_ID: z.string().min(1).optional(),
@@ -33,6 +36,16 @@ const envSchema = z.object({
   CTRIP_AFFILIATE_ID: z.string().min(1).optional(),
   TONGCHENG_AFFILIATE_ID: z.string().min(1).optional(),
   FULFILLMENT_CALLBACK_SECRET: z.string().min(1).optional(),
+  JD_UNION_ORDER_API_ENDPOINT: z.string().url().optional(),
+  JD_UNION_ORDER_API_SECRET: z.string().min(1).optional(),
+  TAOBAO_ORDER_API_ENDPOINT: z.string().url().optional(),
+  TAOBAO_ORDER_API_SECRET: z.string().min(1).optional(),
+  MEITUAN_ORDER_API_ENDPOINT: z.string().url().optional(),
+  MEITUAN_ORDER_API_SECRET: z.string().min(1).optional(),
+  CTRIP_ORDER_API_ENDPOINT: z.string().url().optional(),
+  CTRIP_ORDER_API_SECRET: z.string().min(1).optional(),
+  TONGCHENG_ORDER_API_ENDPOINT: z.string().url().optional(),
+  TONGCHENG_ORDER_API_SECRET: z.string().min(1).optional(),
 });
 
 export const env = envSchema.parse(process.env);

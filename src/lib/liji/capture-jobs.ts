@@ -252,6 +252,43 @@ export function verifyCaptureProviderCallbackSignature(params: {
     crypto.timingSafeEqual(expectedBuffer, actualBuffer);
 }
 
+export function parseCaptureProviderAllowedIps(value?: string) {
+  return (value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+export function captureCallbackRequestIps(request: Request) {
+  const forwarded = request.headers.get("x-forwarded-for") ?? "";
+  const realIp = request.headers.get("x-real-ip") ?? "";
+
+  return [...forwarded.split(","), realIp]
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+export function isCaptureProviderCallbackSourceAllowed(params: {
+  request: Request;
+  allowedIps?: string;
+}) {
+  const allowlist = parseCaptureProviderAllowedIps(params.allowedIps);
+  const requestIps = captureCallbackRequestIps(params.request);
+  if (allowlist.length === 0) {
+    return {
+      allowed: true,
+      reason: "allowlist_not_configured" as const,
+      requestIps,
+    };
+  }
+
+  return {
+    allowed: requestIps.some((ip) => allowlist.includes(ip)),
+    reason: "allowlist_configured" as const,
+    requestIps,
+  };
+}
+
 export function normalizeCaptureProviderCallback(
   payload: unknown,
   now = new Date()

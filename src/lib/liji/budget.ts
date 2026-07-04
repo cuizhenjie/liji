@@ -1,7 +1,7 @@
 import { countInclusiveDays } from "./calendar";
 import { getComplianceWarnings } from "./compliance";
 import { createUuid } from "./ids";
-import { buildTravelQuotePlan, type TravelQuoteCandidate } from "./travel-options";
+import { buildTravelQuotePlan, type TravelPreference, type TravelQuoteCandidate } from "./travel-options";
 import type { CalendarEvent, Contact, FulfillmentPlan, PlanItem } from "./types";
 
 const catalog = {
@@ -122,6 +122,7 @@ export function generateTravelPlan(input: {
   endDate?: string;
   destination: string;
   dailyLimitCny?: number;
+  preference?: TravelPreference;
   transportCandidates?: TravelQuoteCandidate[];
   hotelCandidates?: TravelQuoteCandidate[];
   now?: Date;
@@ -134,6 +135,7 @@ export function generateTravelPlan(input: {
     startDate: input.startDate,
     endDate: input.endDate,
     dailyLimitCny: input.dailyLimitCny,
+    preference: input.preference,
     transportCandidates: input.transportCandidates,
     hotelCandidates: input.hotelCandidates,
   });

@@ -3,6 +3,7 @@ import {
   captureJobUpdatePayload,
   captureProviderCallbackToWorkerResult,
   createCaptureExtractionOpsAlert,
+  isCaptureProviderCallbackSourceAllowed,
   loadContactsForCaptureJob,
   mapCaptureExtractionJobRow,
   normalizeCaptureProviderCallback,
@@ -37,7 +38,25 @@ function signatureFromRequest(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const sourceAllowed = isCaptureProviderCallbackSourceAllowed({
+    request,
+    allowedIps: env.LIJI_CAPTURE_PROVIDER_ALLOWED_IPS,
+  });
+  if (!sourceAllowed.allowed) {
+    return Response.json({
+      error: "capture callback source not allowed",
+      requestIps: sourceAllowed.requestIps,
+    }, { status: 403 });
+  }
+
   const rawBody = await request.text();
+  const client = createSupabaseServiceClient();
+  if (client && !env.LIJI_CAPTURE_PROVIDER_CALLBACK_SECRET) {
+    return Response.json({
+      error: "LIJI_CAPTURE_PROVIDER_CALLBACK_SECRET is required for persisted capture callbacks",
+    }, { status: 401 });
+  }
+
   const { signature, token } = signatureFromRequest(request);
   const authorized = verifyCaptureProviderCallbackSignature({
     rawBody,
@@ -55,7 +74,6 @@ export async function POST(request: Request) {
     return Response.json({ error: "missing capture job id" }, { status: 400 });
   }
 
-  const client = createSupabaseServiceClient();
   if (!client) {
     return Response.json({
       source: "demo",

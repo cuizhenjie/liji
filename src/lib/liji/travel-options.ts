@@ -13,6 +13,15 @@ export type TravelQuoteCandidate = {
   url: string;
 };
 
+export type TravelPreference = {
+  origin?: string;
+  transportPriority?: "rail_under_5h" | "fastest" | "comfort";
+  hotelStandard?: "business" | "premium" | "budget";
+  mealStandard?: "standard" | "business";
+  clientAddress?: string;
+  maxHotelDistanceKm?: number;
+};
+
 export type TravelQuotePlan = {
   candidates: TravelQuoteCandidate[];
   selected: {
@@ -111,10 +120,28 @@ function defaultHotelCandidates(destination: string, nights: number): TravelQuot
   ];
 }
 
-function chooseBest(candidates: TravelQuoteCandidate[], limitCny: number) {
+function chooseBest(
+  candidates: TravelQuoteCandidate[],
+  limitCny: number,
+  preference?: TravelPreference,
+) {
   const affordable = candidates
     .filter((candidate) => candidate.amountCny <= limitCny)
-    .sort((left, right) => right.score - left.score);
+    .sort((left, right) => {
+      if (left.category === "hotel" && right.category === "hotel" && preference?.hotelStandard === "budget") {
+        return left.amountCny - right.amountCny;
+      }
+      if (left.category === "hotel" && right.category === "hotel" && preference?.hotelStandard === "premium") {
+        return right.score - left.score || right.amountCny - left.amountCny;
+      }
+      if (preference?.transportPriority === "fastest" && left.durationHours && right.durationHours) {
+        return left.durationHours - right.durationHours;
+      }
+      if (preference?.transportPriority === "comfort") {
+        return right.amountCny - left.amountCny || right.score - left.score;
+      }
+      return right.score - left.score;
+    });
 
   return affordable[0] ?? [...candidates].sort((left, right) => left.amountCny - right.amountCny)[0];
 }
@@ -124,6 +151,7 @@ export function buildTravelQuotePlan(input: {
   startDate: string;
   endDate?: string;
   dailyLimitCny?: number;
+  preference?: TravelPreference;
   transportCandidates?: TravelQuoteCandidate[];
   hotelCandidates?: TravelQuoteCandidate[];
 }): TravelQuotePlan {
@@ -137,8 +165,16 @@ export function buildTravelQuotePlan(input: {
   const hotelCandidates = input.hotelCandidates?.length
     ? input.hotelCandidates
     : defaultHotelCandidates(input.destination, nights);
-  const transport = chooseBest(transportCandidates, totalLimit * 0.35);
-  const hotel = chooseBest(hotelCandidates, totalLimit * 0.5);
+  const maxHotelDistanceKm = input.preference?.maxHotelDistanceKm ?? 3;
+  const preferredHotelCandidates = input.preference?.hotelStandard === "premium"
+    ? [...hotelCandidates].sort((left, right) => right.score - left.score)
+    : input.preference?.hotelStandard === "budget"
+      ? [...hotelCandidates].sort((left, right) => left.amountCny - right.amountCny)
+      : hotelCandidates;
+  const transportLimit = input.preference?.transportPriority === "comfort" ? totalLimit * 0.45 : totalLimit * 0.35;
+  const hotelLimit = input.preference?.hotelStandard === "premium" ? totalLimit * 0.6 : totalLimit * 0.5;
+  const transport = chooseBest(transportCandidates, transportLimit, input.preference);
+  const hotel = chooseBest(preferredHotelCandidates, hotelLimit, input.preference);
   const committed = transport.amountCny + hotel.amountCny;
   const warnings: string[] = [];
   const alternatives: string[] = [];
@@ -155,8 +191,8 @@ export function buildTravelQuotePlan(input: {
     alternatives.push("若机票临近涨价，可优先切换晚间高铁。");
   }
 
-  if (hotel.distanceKm && hotel.distanceKm > 3) {
-    alternatives.push("当前酒店超过 3 公里，建议预留打车时间或切回近客户地址酒店。");
+  if (hotel.distanceKm && hotel.distanceKm > maxHotelDistanceKm) {
+    alternatives.push(`当前酒店超过 ${maxHotelDistanceKm} 公里，建议预留打车时间或切回近客户地址酒店。`);
   }
 
   return {

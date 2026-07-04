@@ -36,7 +36,7 @@ export async function POST(request: Request) {
             contacts: demoContacts,
             source: "demo" as const,
             userId: undefined,
-            allowCloudModel: body.allowCloudModel,
+            allowCloudModel: false,
           };
         }
 
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
         contacts: demoContacts,
         source: "demo" as const,
         userId: undefined,
-        allowCloudModel: body.allowCloudModel,
+        allowCloudModel: false,
       };
 
   const result = await parseInputWithProvider({
