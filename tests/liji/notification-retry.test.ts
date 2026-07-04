@@ -40,6 +40,16 @@ describe("notification retry worker helpers", () => {
       retryCount: 0,
       maxRetries: 2,
       now: new Date("2026-07-03T10:00:00.000Z"),
+      delayMultiplier: 3,
+    })).toMatchObject({
+      exhausted: false,
+      delayMinutes: 30,
+      nextRetryAt: "2026-07-03T10:30:00.000Z",
+    });
+    expect(planNotificationRetry({
+      retryCount: 0,
+      maxRetries: 2,
+      now: new Date("2026-07-03T10:00:00.000Z"),
     })).toMatchObject({
       exhausted: false,
       delayMinutes: 10,
@@ -62,10 +72,26 @@ describe("notification retry worker helpers", () => {
         providerStatus: "failed",
         providerMessage: "template missing",
       },
+      governance: {
+        failureClass: "template_or_provider",
+        retryAllowed: false,
+        stopReason: "template_or_provider_error",
+        alertSeverity: "critical",
+        alertMessage: "模板异常",
+        retryDelayMultiplier: 1,
+      },
       now: new Date("2026-07-03T10:00:00.000Z"),
     });
     const alert = createNotificationRetryOpsAlert({
       log: { ...failedLog, retryCount: 2 },
+      severity: "warning",
+      governance: {
+        failureClass: "rate_limited",
+        retryAllowed: true,
+        alertSeverity: "warning",
+        alertMessage: "频控",
+        retryDelayMultiplier: 3,
+      },
       now: new Date("2026-07-03T10:00:00.000Z"),
     });
 
@@ -75,9 +101,12 @@ describe("notification retry worker helpers", () => {
     expect(retryLog.nextRetryAt).toBe("2026-07-03T10:20:00.000Z");
     expect(alert).toMatchObject({
       source: "notification_retry",
-      severity: "critical",
+      severity: "warning",
       entityTable: "notification_logs",
       entityId: "log-1",
+    });
+    expect(alert.metadata).toMatchObject({
+      failureClass: "rate_limited",
     });
   });
 });

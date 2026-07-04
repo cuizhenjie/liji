@@ -1,5 +1,6 @@
 import type { AliyunDeliveryResult } from "./aliyun";
 import { createUuid } from "./ids";
+import type { NotificationGovernanceDecision } from "./notification-governance";
 import type { NotificationLog } from "./types";
 
 export type RetryableNotificationLog = NotificationLog & {
@@ -40,6 +41,7 @@ export function planNotificationRetry(params: {
   retryCount: number;
   maxRetries: number;
   now?: Date;
+  delayMultiplier?: number;
 }) {
   const now = params.now ?? new Date();
   if (params.retryCount >= params.maxRetries) {
@@ -50,7 +52,10 @@ export function planNotificationRetry(params: {
     };
   }
 
-  const delayMinutes = Math.min(60, 10 * 2 ** Math.max(0, params.retryCount));
+  const delayMinutes = Math.min(
+    180,
+    10 * 2 ** Math.max(0, params.retryCount) * (params.delayMultiplier ?? 1)
+  );
   return {
     exhausted: false,
     delayMinutes,
@@ -62,6 +67,7 @@ export function createNotificationRetryLog(params: {
   original: RetryableNotificationLog;
   delivery?: AliyunDeliveryResult;
   now?: Date;
+  governance?: NotificationGovernanceDecision;
 }): NotificationRetryLog {
   const now = params.now ?? new Date();
   const retryCount = params.original.retryCount + 1;
@@ -71,6 +77,7 @@ export function createNotificationRetryLog(params: {
       retryCount,
       maxRetries: params.original.maxRetries,
       now,
+      delayMultiplier: params.governance?.retryDelayMultiplier,
     })
     : null;
 
@@ -99,11 +106,13 @@ export function createNotificationRetryLog(params: {
 export function createNotificationRetryOpsAlert(params: {
   log: RetryableNotificationLog;
   message?: string;
+  severity?: "warning" | "critical";
+  governance?: NotificationGovernanceDecision;
   now?: Date;
 }) {
   return {
     userId: params.log.userId,
-    severity: "critical" as const,
+    severity: params.severity ?? ("critical" as const),
     source: "notification_retry",
     title: `通知重试失败：${params.log.title}`,
     message: params.message ?? "短信/语音通知多次失败，请人工确认号码、模板和供应商状态。",
@@ -116,6 +125,8 @@ export function createNotificationRetryOpsAlert(params: {
       retryCount: params.log.retryCount,
       maxRetries: params.log.maxRetries,
       providerStatus: params.log.providerStatus,
+      failureClass: params.governance?.failureClass,
+      stopReason: params.governance?.stopReason,
     },
     createdAt: (params.now ?? new Date()).toISOString(),
   };

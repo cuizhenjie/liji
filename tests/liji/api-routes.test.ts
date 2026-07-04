@@ -308,6 +308,7 @@ describe("productization API routes", () => {
     expect(JSON.stringify(payload.integrations)).not.toContain("SUPABASE_SERVICE_ROLE_KEY");
     expect(health.checks.length).toBeGreaterThan(0);
     expect(health.summary.total).toBe(health.checks.length);
+    expect(health.p0Actions.find((item: { id: string }) => item.id === "notification-production")).toBeDefined();
   });
 
   it("exports redacted data and creates deletion requests", async () => {

@@ -68,12 +68,14 @@ npx playwright install chromium webkit
 - 联盟拉单与财务导出：`/api/fulfillment/provider-sync` 支持京东/淘宝/美团/携程/同程订单 API 拉单、HMAC 签名和字段归一化；`/api/fulfillment/export` 可导出履约对账 CSV。
 - 运营台 UI：新增运营页，集中处理 OCR/ASR SLA、通知异常重试、AI 记忆批量处理、联盟订单同步和真实服务就绪状态。
 - OCR/ASR 回调白名单：`/api/capture/provider-callback` 可通过 `LIJI_CAPTURE_PROVIDER_ALLOWED_IPS` 校验 provider 来源 IP。
+- P0 上线清单：`/api/health` 返回 `p0Actions`，按云端数据、OCR/ASR、外部通知、履约结算输出 ready/needs_config/blocked 与下一步动作。
+- 通知治理：`/api/notification-retries/run` 按供应商失败文案区分频控重试、模板/权限熔断、号码永久失败和用户退订/停呼，并写入 `notification_retry` 告警。
 
 ## 下一批待接真实服务
 
 - 配置真实 OCR/ASR provider 账号、正式回调域名和供应商白名单 IP，并沉淀人工补录 SOP。
 - 配置京东/淘宝/美团/携程/同程真实订单 API、签名密钥和结算周期，补结算差异人工处理台。
-- 增强通知治理：按供应商错误码分级、用户退订/停呼策略、异常模板自动熔断。
+- 接真实通知压测：配置阿里云正式模板/签名/回执推送，补充供应商错误码样本库和运营处理 SOP。
 - 原生端增强：移动端短信读取权限、长按录音、附件上传进度和 PWA 安装后的系统级降级策略。
 - 商业化闭环：会员订阅、紧急呼叫权益计量、CPS 结算审核和财务对账审批。
 
@@ -95,7 +97,10 @@ OPENAI_EMBEDDING_DIMENSIONS=
 CRON_SECRET=
 LIJI_DEFAULT_NOTIFY_PHONE=
 LIJI_ENABLE_EXTERNAL_NOTIFICATIONS=
+LIJI_NOTIFICATION_STOP_KEYWORDS=
+LIJI_NOTIFICATION_TEMPLATE_CIRCUIT_BREAKER=
 LIJI_NOTIFICATION_RECEIPT_CALLBACK_SECRET=
+LIJI_PUBLIC_APP_URL=
 LIJI_CAPTURE_OCR_PROVIDER=
 LIJI_CAPTURE_ASR_PROVIDER=
 LIJI_CAPTURE_PROVIDER_ENDPOINT=

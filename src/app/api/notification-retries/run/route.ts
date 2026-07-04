@@ -4,6 +4,11 @@ import { sendAliyunNotifications } from "@/lib/liji/aliyun";
 import { isCronAuthorized, unauthorizedCronResponse } from "@/lib/liji/cron";
 import type { Json } from "@/lib/liji/database.types";
 import {
+  createNotificationGovernanceDecision,
+  parseNotificationStopKeywords,
+  type NotificationGovernanceDecision,
+} from "@/lib/liji/notification-governance";
+import {
   createNotificationRetryLog,
   createNotificationRetryOpsAlert,
   isNotificationRetryDue,
@@ -107,12 +112,37 @@ async function insertRetryAlert(
   client: NonNullable<ReturnType<typeof createSupabaseServiceClient>>,
   log: RetryableNotificationLog,
   message: string,
-  now: Date
+  now: Date,
+  governance?: NotificationGovernanceDecision
 ) {
   const { error } = await client
     .from("ops_alerts")
-    .insert(opsAlertRow(createNotificationRetryOpsAlert({ log, message, now })));
+    .insert(opsAlertRow(createNotificationRetryOpsAlert({
+      log,
+      message,
+      now,
+      governance,
+      severity: governance?.alertSeverity,
+    })));
   if (error && error.code !== "23505") {
+    throw new Error(error.message);
+  }
+}
+
+async function stopNotificationRetry(
+  client: NonNullable<ReturnType<typeof createSupabaseServiceClient>>,
+  log: RetryableNotificationLog,
+  stopReason: string,
+  now: Date
+) {
+  const { error } = await client
+    .from("notification_logs")
+    .update({
+      stopped_at: now.toISOString(),
+      stop_reason: stopReason,
+    })
+    .eq("id", log.id);
+  if (error) {
     throw new Error(error.message);
   }
 }
@@ -139,6 +169,9 @@ async function runSupabaseNotificationRetries(limit: number) {
 
   const privacyCache = new Map<string, PrivacySettings>();
   const processed = [];
+  const stopKeywords = parseNotificationStopKeywords(process.env.LIJI_NOTIFICATION_STOP_KEYWORDS);
+  const templateCircuitBreakerEnabled =
+    process.env.LIJI_NOTIFICATION_TEMPLATE_CIRCUIT_BREAKER !== "false";
 
   for (const row of data ?? []) {
     if (processed.length >= limit) {
@@ -147,6 +180,30 @@ async function runSupabaseNotificationRetries(limit: number) {
 
     const original = mapRetryableNotificationLog(row as Record<string, unknown>);
     if (!original || !isNotificationRetryDue(original, now)) {
+      continue;
+    }
+
+    const governance = createNotificationGovernanceDecision({
+      log: original,
+      stopKeywords,
+      templateCircuitBreakerEnabled,
+    });
+    if (!governance.retryAllowed) {
+      await stopNotificationRetry(
+        client,
+        original,
+        governance.stopReason ?? "notification_governance_stopped",
+        now
+      );
+      if (governance.alertMessage) {
+        await insertRetryAlert(client, original, governance.alertMessage, now, governance);
+      }
+      processed.push({
+        logId: original.id,
+        status: "stopped",
+        stopReason: governance.stopReason,
+        failureClass: governance.failureClass,
+      });
       continue;
     }
 
@@ -205,6 +262,7 @@ async function runSupabaseNotificationRetries(limit: number) {
       original,
       delivery: deliveries[0],
       now,
+      governance,
     });
     const { error: insertError } = await client
       .from("notification_logs")
@@ -224,7 +282,32 @@ async function runSupabaseNotificationRetries(limit: number) {
       throw new Error(updateError.message);
     }
 
-    if (retryLog.status === "failed" && retryLog.retryCount >= retryLog.maxRetries) {
+    const retryLogGovernance = createNotificationGovernanceDecision({
+      log: retryLog,
+      stopKeywords,
+      templateCircuitBreakerEnabled,
+    });
+    if (retryLog.status === "failed" && !retryLogGovernance.retryAllowed) {
+      const governedRetryLog: RetryableNotificationLog = {
+        ...retryLog,
+        userId: original.userId,
+      };
+      await stopNotificationRetry(
+        client,
+        governedRetryLog,
+        retryLogGovernance.stopReason ?? "notification_governance_stopped",
+        now
+      );
+      if (retryLogGovernance.alertMessage) {
+        await insertRetryAlert(
+          client,
+          governedRetryLog,
+          retryLogGovernance.alertMessage,
+          now,
+          retryLogGovernance
+        );
+      }
+    } else if (retryLog.status === "failed" && retryLog.retryCount >= retryLog.maxRetries) {
       const exhaustedLog: RetryableNotificationLog = {
         ...retryLog,
         userId: original.userId,
@@ -247,6 +330,7 @@ async function runSupabaseNotificationRetries(limit: number) {
       retryLogId: retryLog.id,
       status: retryLog.status,
       providerStatus: retryLog.providerStatus,
+      failureClass: retryLog.status === "failed" ? retryLogGovernance.failureClass : governance.failureClass,
       retryCount: retryLog.retryCount,
       nextRetryAt: retryLog.nextRetryAt,
     });
