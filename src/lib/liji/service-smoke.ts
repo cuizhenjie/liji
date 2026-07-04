@@ -1,4 +1,9 @@
 import { buildEntitlementReport } from "./entitlements";
+import {
+  buildWorkspaceBillingUsageLedger,
+  createBillingCheckoutIntent,
+  createBillingInvoiceRequest,
+} from "./commercial-ops";
 import { buildProductionCheckReport } from "./production-check";
 import { configuredFulfillmentProviderSyncConfigs } from "./fulfillment-provider-sync";
 import { getNativeBridgeCapabilities, validateNativeBridgePayload } from "./native-bridge";
@@ -57,6 +62,26 @@ export function runServiceSmokeSuite(params: {
   const entitlementReport = buildEntitlementReport({
     data: params.data,
     planId: env.LIJI_BILLING_PLAN,
+  });
+  const billingLedger = buildWorkspaceBillingUsageLedger({
+    data: params.data,
+    planId: env.LIJI_BILLING_PLAN,
+    now: params.now,
+  });
+  const checkout = createBillingCheckoutIntent({
+    planId: env.LIJI_BILLING_PLAN ?? "pro",
+    provider: env.LIJI_BILLING_PROVIDER,
+    checkoutBaseUrl: env.LIJI_BILLING_CHECKOUT_URL,
+    now: params.now,
+  });
+  const invoice = createBillingInvoiceRequest({
+    planId: env.LIJI_BILLING_PLAN ?? "pro",
+    amountCny: 399,
+    buyerTitle: "礼记内部验收",
+    taxId: "91110000123456789X",
+    email: "finance@example.test",
+    provider: env.LIJI_INVOICE_PROVIDER,
+    now: params.now,
   });
   const notificationSamples = [
     createNotificationGovernanceDecision({
@@ -134,6 +159,18 @@ export function runServiceSmokeSuite(params: {
       ok: entitlementReport.usage.length > 0,
       warn: entitlementReport.upgradeRecommended,
       detail: `${entitlementReport.plan.label}，${entitlementReport.usage.filter((item) => item.status !== "ok").length} 项接近或超过额度。`,
+    }),
+    check({
+      id: "commercial-ops-contract",
+      label: "商业化流水与开票",
+      category: "billing",
+      ok: billingLedger.ledger.entries.length > 0 &&
+        invoice.status === "queued" &&
+        checkout.status !== "manual_review_required",
+      warn: checkout.status === "manual_review_required",
+      detail: checkout.status === "ready"
+        ? "订阅 checkout、权益扣减流水和发票申请 dry-run 均可用。"
+        : "权益扣减流水和发票申请可用；订阅支付尚需配置 checkout provider。",
     }),
   ];
 

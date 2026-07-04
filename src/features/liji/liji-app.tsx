@@ -88,6 +88,12 @@ import { Textarea } from "@/components/ui/textarea";
 import type { CaptureSource } from "@/lib/liji/ai";
 import { deriveComplianceProfile } from "@/lib/liji/compliance";
 import { generateFestivalPlan, generateTravelPlan } from "@/lib/liji/budget";
+import type {
+  BillingUsageLedgerReport,
+  CpsFinanceApprovalItem,
+  CpsPayoutBatch,
+  OpsAlertLifecycleItem,
+} from "@/lib/liji/commercial-ops";
 import type { EntitlementReport } from "@/lib/liji/entitlements";
 import {
   addRecurringBill as addRecurringBillToWorkspace,
@@ -163,6 +169,10 @@ type OpsDashboardState = {
   nativeCapabilities: NativeBridgeCapability[];
   notificationCodebook: NotificationFailureCodebookEntry[];
   entitlements: EntitlementReport | null;
+  billingLedger: BillingUsageLedgerReport | null;
+  cpsApprovals: CpsFinanceApprovalItem[];
+  cpsPayout: CpsPayoutBatch | null;
+  opsAlerts: OpsAlertLifecycleItem[];
 };
 
 const sectionItems: Array<{
@@ -475,6 +485,10 @@ export function LijiApp({ initialData }: LijiAppProps) {
     nativeCapabilities: [],
     notificationCodebook: [],
     entitlements: null,
+    billingLedger: null,
+    cpsApprovals: [],
+    cpsPayout: null,
+    opsAlerts: [],
   });
   const [isPending, startTransition] = useTransition();
 
@@ -519,6 +533,9 @@ export function LijiApp({ initialData }: LijiAppProps) {
         nativeResponse,
         codebookResponse,
         entitlementsResponse,
+        billingLedgerResponse,
+        cpsApprovalsResponse,
+        opsAlertsResponse,
       ] = await Promise.all([
         fetch("/api/ops/production-check"),
         fetch("/api/ops/service-smoke?iterations=3"),
@@ -526,6 +543,9 @@ export function LijiApp({ initialData }: LijiAppProps) {
         fetch("/api/capture/native-bridge"),
         fetch("/api/notifications/codebook"),
         fetch("/api/billing/entitlements"),
+        fetch("/api/billing/ledger"),
+        fetch("/api/finance/cps-approvals"),
+        fetch("/api/ops/alerts"),
       ]);
 
       const [
@@ -535,6 +555,9 @@ export function LijiApp({ initialData }: LijiAppProps) {
         nativePayload,
         codebookPayload,
         entitlements,
+        billingLedgerPayload,
+        cpsApprovalsPayload,
+        opsAlertsPayload,
       ] = await Promise.all([
         productionResponse.json() as Promise<ProductionCheckReport>,
         smokeResponse.json() as Promise<ServiceSmokeSuite>,
@@ -542,6 +565,9 @@ export function LijiApp({ initialData }: LijiAppProps) {
         nativeResponse.json() as Promise<{ capabilities?: NativeBridgeCapability[] }>,
         codebookResponse.json() as Promise<{ codebook?: NotificationFailureCodebookEntry[] }>,
         entitlementsResponse.json() as Promise<EntitlementReport>,
+        billingLedgerResponse.json() as Promise<{ ledger?: BillingUsageLedgerReport }>,
+        cpsApprovalsResponse.json() as Promise<{ approvals?: CpsFinanceApprovalItem[]; payout?: CpsPayoutBatch }>,
+        opsAlertsResponse.json() as Promise<{ alerts?: OpsAlertLifecycleItem[] }>,
       ]);
 
       setOpsDashboard({
@@ -551,6 +577,10 @@ export function LijiApp({ initialData }: LijiAppProps) {
         nativeCapabilities: nativePayload.capabilities ?? [],
         notificationCodebook: codebookPayload.codebook ?? [],
         entitlements,
+        billingLedger: billingLedgerPayload.ledger ?? null,
+        cpsApprovals: cpsApprovalsPayload.approvals ?? [],
+        cpsPayout: cpsApprovalsPayload.payout ?? null,
+        opsAlerts: opsAlertsPayload.alerts ?? [],
       });
     } catch {
       // Ops readiness is informational; keep the core assistant usable.
@@ -796,7 +826,7 @@ export function LijiApp({ initialData }: LijiAppProps) {
     });
   }
 
-  async function runOpsJob(kind: "captureSla" | "notificationRetry" | "providerSync" | "productionCheck" | "serviceSmoke" | "fulfillmentDiscrepancies" | "nativeBridge") {
+  async function runOpsJob(kind: "captureSla" | "notificationRetry" | "providerSync" | "productionCheck" | "serviceSmoke" | "fulfillmentDiscrepancies" | "nativeBridge" | "billingLedger" | "cpsApprovals" | "opsAlerts") {
     const config = {
       captureSla: {
         path: "/api/capture/sla/run",
@@ -832,6 +862,21 @@ export function LijiApp({ initialData }: LijiAppProps) {
         path: "/api/capture/native-bridge",
         body: undefined,
         success: "原生采集桥状态已刷新",
+      },
+      billingLedger: {
+        path: "/api/billing/ledger",
+        body: undefined,
+        success: "权益扣减流水已刷新",
+      },
+      cpsApprovals: {
+        path: "/api/finance/cps-approvals",
+        body: undefined,
+        success: "CPS 财务审批已刷新",
+      },
+      opsAlerts: {
+        path: "/api/ops/alerts",
+        body: undefined,
+        success: "告警处置队列已刷新",
       },
     }[kind];
 
@@ -2273,7 +2318,7 @@ function OperationsSection({
   data: WorkspaceData;
   integrations: IntegrationStatus[];
   opsDashboard: OpsDashboardState;
-  onRunJob: (kind: "captureSla" | "notificationRetry" | "providerSync" | "productionCheck" | "serviceSmoke" | "fulfillmentDiscrepancies" | "nativeBridge") => void;
+  onRunJob: (kind: "captureSla" | "notificationRetry" | "providerSync" | "productionCheck" | "serviceSmoke" | "fulfillmentDiscrepancies" | "nativeBridge" | "billingLedger" | "cpsApprovals" | "opsAlerts") => void;
   onNavigate: (section: SectionId) => void;
   pending: boolean;
 }) {
@@ -2294,6 +2339,10 @@ function OperationsSection({
   const smokeIssues = (opsDashboard.serviceSmoke?.summary.failed ?? 0) + (opsDashboard.serviceSmoke?.summary.warnings ?? 0);
   const openDiscrepancies = opsDashboard.discrepancies.filter((item) => item.status === "open");
   const entitlementWarnings = opsDashboard.entitlements?.usage.filter((item) => item.status !== "ok").length ?? 0;
+  const financeApprovalAlerts = opsDashboard.cpsApprovals.filter((item) =>
+    item.status === "held" || item.status === "pending_finance"
+  );
+  const openOpsAlerts = opsDashboard.opsAlerts.filter((item) => item.status !== "resolved");
 
   return (
     <div className="flex flex-col gap-4">
@@ -2367,6 +2416,27 @@ function OperationsSection({
                 icon={SmartphoneIcon}
                 disabled={pending}
                 onClick={() => onRunJob("nativeBridge")}
+              />
+              <OpsAction
+                title="权益扣减流水"
+                detail={`${formatCny(opsDashboard.billingLedger?.totalBillableCny ?? 0)} 超额待处理`}
+                icon={HistoryIcon}
+                disabled={pending}
+                onClick={() => onRunJob("billingLedger")}
+              />
+              <OpsAction
+                title="CPS 财务审批"
+                detail={`${financeApprovalAlerts.length} 笔佣金待审批或补证据`}
+                icon={HandCoinsIcon}
+                disabled={pending}
+                onClick={() => onRunJob("cpsApprovals")}
+              />
+              <OpsAction
+                title="告警处置日志"
+                detail={`${openOpsAlerts.length} 条开放告警需确认负责人`}
+                icon={ClipboardCheckIcon}
+                disabled={pending}
+                onClick={() => onRunJob("opsAlerts")}
               />
             </div>
           </CardContent>
@@ -2485,6 +2555,71 @@ function OperationsSection({
                     {opsDashboard.nativeCapabilities.map((item) => item.label).join("、") || "能力状态加载中"}
                   </div>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>P2 商业化闭环</CardTitle>
+              <CardDescription>权益扣减、发票申请和 CPS 佣金审批。</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col gap-3">
+                <div className="rounded-md border p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium">权益扣减流水</span>
+                    <Badge variant={(opsDashboard.billingLedger?.billableEntries ?? 0) > 0 ? "outline" : "secondary"}>
+                      {opsDashboard.billingLedger?.billableEntries ?? 0} billable
+                    </Badge>
+                  </div>
+                  <div className="mt-1 text-sm text-muted-foreground">
+                    超额金额 {formatCny(opsDashboard.billingLedger?.totalBillableCny ?? 0)}
+                  </div>
+                </div>
+                <div className="rounded-md border p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium">CPS 财务审批</span>
+                    <Badge variant={financeApprovalAlerts.length > 0 ? "outline" : "secondary"}>
+                      {financeApprovalAlerts.length} pending
+                    </Badge>
+                  </div>
+                  <div className="mt-1 text-sm text-muted-foreground">
+                    可付款佣金 {formatCny(opsDashboard.cpsPayout?.totalCommissionCny ?? 0)}
+                  </div>
+                </div>
+                <div className="rounded-md border p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium">发票与订阅</span>
+                    <Badge variant="outline">manual ready</Badge>
+                  </div>
+                  <div className="mt-1 text-sm text-muted-foreground">
+                    真实支付未配置时，先走人工开通和发票队列。
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>运营告警处置</CardTitle>
+              <CardDescription>负责人、下一步和处置状态。</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col gap-2">
+                {opsDashboard.opsAlerts.slice(0, 4).map((alert) => (
+                  <div key={alert.id} className="rounded-md border p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium">{alert.title}</span>
+                      <Badge variant={alert.severity === "critical" ? "destructive" : "outline"}>{alert.ownerRole}</Badge>
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{alert.nextAction}</p>
+                  </div>
+                ))}
+                {opsDashboard.opsAlerts.length === 0 ? (
+                  <div className="rounded-md border p-3 text-sm text-muted-foreground">暂无开放告警。</div>
+                ) : null}
               </div>
             </CardContent>
           </Card>

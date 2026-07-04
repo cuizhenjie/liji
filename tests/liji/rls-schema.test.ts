@@ -50,6 +50,10 @@ const notificationRetryOpsMigration = readFileSync(
   join(process.cwd(), "supabase/migrations/20260703233000_notification_retry_ops.sql"),
   "utf8"
 );
+const p2CommercialOpsMigration = readFileSync(
+  join(process.cwd(), "supabase/migrations/20260704110000_p2_commercial_ops.sql"),
+  "utf8"
+);
 
 describe("Supabase RLS migration", () => {
   it("enables RLS for sensitive user tables", () => {
@@ -170,5 +174,24 @@ describe("Supabase RLS migration", () => {
     expect(notificationRetryOpsMigration).toContain("stopped_at timestamptz");
     expect(notificationRetryOpsMigration).toContain("idx_notification_logs_retry_due");
     expect(notificationRetryOpsMigration).toContain("idx_notification_logs_retry_parent");
+  });
+
+  it("adds P2 commercial operations tables with RLS", () => {
+    for (const table of [
+      "billing_subscriptions",
+      "billing_usage_ledger",
+      "billing_invoice_requests",
+      "cps_finance_approvals",
+      "ops_alert_events",
+    ]) {
+      expect(p2CommercialOpsMigration).toContain(`create table if not exists public.${table}`);
+      expect(p2CommercialOpsMigration).toContain(`alter table public.${table} enable row level security`);
+      expect(p2CommercialOpsMigration).toContain("auth.uid() = user_id");
+    }
+
+    expect(p2CommercialOpsMigration).toContain("check (status in ('pending_finance', 'approved', 'held', 'rejected', 'paid'))");
+    expect(p2CommercialOpsMigration).toContain("idx_billing_usage_ledger_user_period");
+    expect(p2CommercialOpsMigration).toContain("idx_cps_finance_approvals_user_status");
+    expect(p2CommercialOpsMigration).toContain("idx_ops_alert_events_user_alert");
   });
 });
