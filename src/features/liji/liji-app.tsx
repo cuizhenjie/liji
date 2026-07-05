@@ -95,6 +95,10 @@ import type {
   CpsPayoutBatch,
   OpsAlertLifecycleItem,
 } from "@/lib/liji/commercial-ops";
+import {
+  buildDataAssetRemediationTasks,
+  type DataAssetRemediationTask,
+} from "@/lib/liji/data-asset-remediation";
 import type { EntitlementReport } from "@/lib/liji/entitlements";
 import {
   addRecurringBill as addRecurringBillToWorkspace,
@@ -332,6 +336,18 @@ function priorityText(priority: AssistantAction["priority"]) {
 }
 
 function priorityBadgeVariant(priority: AssistantAction["priority"]) {
+  if (priority === "critical") return "destructive" as const;
+  if (priority === "high") return "secondary" as const;
+  return "outline" as const;
+}
+
+function remediationPriorityText(priority: DataAssetRemediationTask["priority"]) {
+  if (priority === "critical") return "立即";
+  if (priority === "high") return "优先";
+  return "补齐";
+}
+
+function remediationPriorityVariant(priority: DataAssetRemediationTask["priority"]) {
   if (priority === "critical") return "destructive" as const;
   if (priority === "high") return "secondary" as const;
   return "outline" as const;
@@ -1656,15 +1672,17 @@ function DashboardSection(props: {
   onNavigate: (section: SectionId) => void;
 }) {
   const { data, pendingCaptures, relationshipBudget } = props;
+  const scopedData = {
+    ...data,
+    contacts: props.contacts,
+    events: props.events,
+    plans: props.plans,
+  };
   const commandCenter = buildSecretaryCommandCenter({
-    data: {
-      ...data,
-      contacts: props.contacts,
-      events: props.events,
-      plans: props.plans,
-    },
+    data: scopedData,
     levelTwoCards: props.levelTwoCards,
   });
+  const remediationTasks = buildDataAssetRemediationTasks(scopedData, 6);
   const timeline = buildSecretaryTimeline(data, 8);
   const highConfidenceCaptures = pendingCaptures.filter((capture) => capture.parsed.confidence >= 0.75);
   const lowConfidenceCaptures = pendingCaptures.filter((capture) => capture.parsed.confidence < 0.65);
@@ -1753,6 +1771,8 @@ function DashboardSection(props: {
         <AiContinuityCard report={commandCenter.aiContinuity} />
         <ScenarioJourneyCard journeys={commandCenter.journeys} onNavigate={props.onNavigate} />
       </div>
+
+      <DataAssetRemediationCard tasks={remediationTasks} onNavigate={props.onNavigate} />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <MetricCard
@@ -1980,6 +2000,55 @@ function DashboardSection(props: {
         </Card>
       </div>
     </div>
+  );
+}
+
+function DataAssetRemediationCard({
+  tasks,
+  onNavigate,
+}: {
+  tasks: DataAssetRemediationTask[];
+  onNavigate: (section: SectionId) => void;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>资产补齐任务包</CardTitle>
+        <CardDescription>把关系、日程、账单、记忆和履约缺口转成下一步动作。</CardDescription>
+        <CardAction>
+          <Badge variant={tasks.some((task) => task.priority === "critical") ? "destructive" : tasks.length > 0 ? "outline" : "secondary"}>
+            {tasks.length} 项待补
+          </Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        {tasks.length === 0 ? (
+          <EmptyLine title="资产链路完整" detail="当前身份视图下暂无需要补齐的关系、日程或履约资产。" />
+        ) : (
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+            {tasks.map((task) => (
+              <div key={task.id} className="flex min-h-32 flex-col justify-between rounded-lg border p-3">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={remediationPriorityVariant(task.priority)}>
+                      {remediationPriorityText(task.priority)}
+                    </Badge>
+                    <Badge variant="outline">{task.assetKey}</Badge>
+                    <span className="text-xs text-muted-foreground">{task.evidence}</span>
+                  </div>
+                  <div className="mt-2 font-medium">{task.title}</div>
+                  <p className="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground">{task.detail}</p>
+                </div>
+                <Button className="mt-3 w-fit" size="sm" variant="outline" onClick={() => onNavigate(task.section)}>
+                  <ClipboardCheckIcon data-icon="inline-start" />
+                  {task.cta}
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

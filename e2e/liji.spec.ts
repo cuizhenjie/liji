@@ -12,6 +12,8 @@ test("captures and confirms a birthday event", async ({ page }) => {
   await expect(page.getByText("数据资产体检")).toBeVisible();
   await expect(page.getByText("AI 连续性")).toBeVisible();
   await expect(page.getByText("场景流转")).toBeVisible();
+  await expect(page.getByText("资产补齐任务包")).toBeVisible();
+  await expect(page.getByText("关联日程：房贷扣款").first()).toBeVisible();
   await expect(page.getByRole("button", { name: /补齐资产 日程资产/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /补齐资产 合规资产/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /补齐资产 履约资产/ })).toBeVisible();
