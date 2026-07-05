@@ -5,6 +5,9 @@ import { demoContacts, demoWorkspace } from "../../src/lib/liji/sample-data";
 import {
   acknowledgeEvent,
   acknowledgeNotificationLog,
+  applyConfirmedCaptures,
+  archiveCapture,
+  archiveCaptures,
   applyConfirmedCapture,
   rejectCapture,
   setPlanStatus,
@@ -48,6 +51,25 @@ describe("business workflow", () => {
 
     expect(rejected.captures[0].status).toBe("rejected");
     expect(confirmedPlan.plans[0].status).toBe("confirmed");
+  });
+
+  it("batch confirms high-confidence captures and archives low-confidence captures", () => {
+    const birthday = parseNaturalLanguageInput("下周五是女儿5岁生日，预算2000元", demoContacts);
+    const bill = parseNaturalLanguageInput("明天房贷扣款12800元", demoContacts);
+    const memory = parseNaturalLanguageInput("周明下次宴请不吃香菜", demoContacts);
+    const workspace = {
+      ...demoWorkspace,
+      captures: [birthday, bill, memory],
+    };
+    const confirmed = applyConfirmedCaptures(workspace, [birthday, bill]);
+    const archivedOne = archiveCapture(confirmed, memory.id);
+    const archivedMany = archiveCaptures(workspace, [memory.id]);
+
+    expect(confirmed.captures.filter((capture) => capture.status === "confirmed")).toHaveLength(2);
+    expect(confirmed.events[0].title).toContain("生日");
+    expect(confirmed.recurringBills[0].title).toBe("房贷扣款");
+    expect(archivedOne.captures.find((capture) => capture.id === memory.id)?.status).toBe("archived");
+    expect(archivedMany.captures.find((capture) => capture.id === memory.id)?.status).toBe("archived");
   });
 
   it("acknowledges events and notification logs", () => {

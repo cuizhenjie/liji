@@ -239,7 +239,7 @@ export async function parseInputWithProvider({
       source,
       now,
       fetcher,
-    });
+    }).catch(() => null);
 
     if (parsed) {
       return {

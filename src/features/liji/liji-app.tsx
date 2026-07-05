@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 import {
   ActivityIcon,
   AlertTriangleIcon,
+  ArchiveIcon,
   BellRingIcon,
   BotIcon,
   CalendarDaysIcon,
@@ -117,11 +118,27 @@ import {
   loadWorkspaceData,
   saveWorkspaceData,
 } from "@/lib/liji/persistence";
+import { parseNaturalLanguageInput } from "@/lib/liji/parser";
 import { createDeletionRequest, exportWorkspaceData } from "@/lib/liji/privacy";
 import { registerBrowserPushSubscription } from "@/lib/liji/push";
 import type { NativeBridgeCapability } from "@/lib/liji/native-bridge";
 import type { NotificationFailureCodebookEntry } from "@/lib/liji/notification-governance";
 import type { ProductionCheckReport } from "@/lib/liji/production-check";
+import {
+  buildProductionLaunchChecklist,
+  type ProductionLaunchTask,
+} from "@/lib/liji/production-launch";
+import {
+  buildSecretaryCommandCenter,
+  type AiContinuityReport,
+  type AssistantAction,
+  type DataAssetItem,
+  type ScenarioJourney,
+} from "@/lib/liji/secretary-command-center";
+import {
+  buildSecretaryTimeline,
+  type SecretaryTimelineItem,
+} from "@/lib/liji/secretary-timeline";
 import type { ServiceSmokeSuite } from "@/lib/liji/service-smoke";
 import { createSupabaseBrowserClient } from "@/lib/liji/supabase-browser";
 import type { TravelPreference } from "@/lib/liji/travel-options";
@@ -129,6 +146,9 @@ import {
   acknowledgeEvent,
   acknowledgeNotificationLog,
   applyConfirmedCapture,
+  applyConfirmedCaptures,
+  archiveCapture as archiveCaptureWorkflow,
+  archiveCaptures as archiveCapturesWorkflow,
   rejectCapture as rejectCaptureWorkflow,
   setPlanStatus,
 } from "@/lib/liji/workflow";
@@ -162,6 +182,18 @@ type LijiAppProps = {
   initialData: WorkspaceData;
 };
 
+type CaptureQuickStart = {
+  label: string;
+  source: CaptureSource;
+  text: string;
+};
+
+type ParseCaptureResponse = {
+  capture?: CaptureItem;
+  error?: string;
+  provider?: "local-rules" | "openai";
+};
+
 type OpsDashboardState = {
   productionCheck: ProductionCheckReport | null;
   serviceSmoke: ServiceSmokeSuite | null;
@@ -193,6 +225,29 @@ const identityOptions: Array<{ value: IdentityMode; label: string }> = [
   { value: "all", label: "全部" },
   { value: "family", label: "家庭" },
   { value: "business", label: "商务" },
+];
+
+const captureQuickStarts: CaptureQuickStart[] = [
+  {
+    label: "生日关怀",
+    source: "text",
+    text: "下周五是女儿5岁生日，预算2000元，提前准备礼物和蛋糕",
+  },
+  {
+    label: "客户宴请",
+    source: "chat",
+    text: "周明下周三在广州天河客户宴请，预算500元，不吃香菜，需要Level 1提醒",
+  },
+  {
+    label: "差旅行程",
+    source: "text",
+    text: "7月8日到7月10日从上海去广州出差，每天预算2400元，客户地址广州天河",
+  },
+  {
+    label: "账单短信",
+    source: "bill",
+    text: "【招商银行】您尾号8621账户房贷扣款12800元，交易时间2026-07-02。",
+  },
 ];
 
 const currency = new Intl.NumberFormat("zh-CN", {
@@ -268,6 +323,55 @@ function statusText(status: CaptureItem["status"] | FulfillmentPlan["status"]) {
     bookmarked: "已收藏",
   };
   return map[status] ?? status;
+}
+
+function priorityText(priority: AssistantAction["priority"]) {
+  if (priority === "critical") return "立即";
+  if (priority === "high") return "优先";
+  return "今日";
+}
+
+function priorityBadgeVariant(priority: AssistantAction["priority"]) {
+  if (priority === "critical") return "destructive" as const;
+  if (priority === "high") return "secondary" as const;
+  return "outline" as const;
+}
+
+function assetStatusText(status: DataAssetItem["status"]) {
+  if (status === "healthy") return "健康";
+  if (status === "attention") return "待补齐";
+  return "阻塞";
+}
+
+function assetStatusVariant(status: DataAssetItem["status"]) {
+  if (status === "healthy") return "secondary" as const;
+  if (status === "attention") return "outline" as const;
+  return "destructive" as const;
+}
+
+function timelineStatusText(status: SecretaryTimelineItem["status"]) {
+  if (status === "blocked") return "需处理";
+  if (status === "action") return "待推进";
+  if (status === "done") return "已闭环";
+  return "记录";
+}
+
+function timelineStatusVariant(status: SecretaryTimelineItem["status"]) {
+  if (status === "blocked") return "destructive" as const;
+  if (status === "action") return "secondary" as const;
+  return "outline" as const;
+}
+
+function launchTaskStatusText(status: ProductionLaunchTask["status"]) {
+  if (status === "ready") return "ready";
+  if (status === "blocked") return "blocked";
+  return "needs config";
+}
+
+function launchTaskStatusVariant(status: ProductionLaunchTask["status"]) {
+  if (status === "ready") return "secondary" as const;
+  if (status === "blocked") return "destructive" as const;
+  return "outline" as const;
 }
 
 function memoryReviewText(memory: AiMemory) {
@@ -649,36 +753,65 @@ export function LijiApp({ initialData }: LijiAppProps) {
     return () => window.clearTimeout(timer);
   }, [refreshOpsDashboard]);
 
-  async function handleParseCapture() {
-    if (!captureText.trim()) {
+  async function parseCaptureToInbox(params: {
+    text: string;
+    source: CaptureSource;
+    clearDraft?: boolean;
+  }) {
+    if (!params.text.trim()) {
       toast.error("请输入采集内容");
       return;
     }
 
     startTransition(async () => {
-      const response = await fetch("/api/parse-input", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: captureText,
-          source: captureSource,
-          allowCloudModel: data.privacy.cloudModelEnabled,
-        }),
-      });
-      const result = (await response.json()) as {
-        capture?: CaptureItem;
-        error?: string;
-        provider?: "local-rules" | "openai";
-      };
+      let result: ParseCaptureResponse;
 
-      if (!response.ok || !result.capture) {
-        toast.error(result.error ?? "解析失败");
-        return;
+      try {
+        const response = await fetch("/api/parse-input", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: params.text,
+            source: params.source,
+            allowCloudModel: data.privacy.cloudModelEnabled,
+          }),
+        });
+        result = (await response.json()) as ParseCaptureResponse;
+
+        if (!response.ok || !result.capture) {
+          throw new Error(result.error ?? "解析失败");
+        }
+      } catch {
+        result = {
+          capture: parseNaturalLanguageInput(params.text, data.contacts, new Date(), params.source),
+          provider: "local-rules",
+        };
       }
 
       workspace.setCaptures((captures) => [result.capture!, ...captures]);
-      setCaptureText("");
-      toast.success(result.provider === "openai" ? "云端 AI 已解析，待确认" : "已进入任务与确认中心");
+      if (params.clearDraft) {
+        setCaptureText("");
+      }
+      setActiveSection("dashboard");
+      toast.success(result.provider === "openai" ? "云端 AI 已解析，待确认" : "本地规则已接管，待确认");
+    });
+  }
+
+  async function handleParseCapture() {
+    await parseCaptureToInbox({
+      text: captureText,
+      source: captureSource,
+      clearDraft: true,
+    });
+  }
+
+  function runQuickCapture(template: CaptureQuickStart) {
+    setCaptureText(template.text);
+    setCaptureSource(template.source);
+    void parseCaptureToInbox({
+      text: template.text,
+      source: template.source,
+      clearDraft: true,
     });
   }
 
@@ -737,9 +870,34 @@ export function LijiApp({ initialData }: LijiAppProps) {
     toast.success("已确认并写入工作区");
   }
 
+  function confirmCaptures(captures: CaptureItem[]) {
+    if (captures.length === 0) {
+      toast("暂无可批量确认的采集项");
+      return;
+    }
+
+    workspace.setData((current) => applyConfirmedCaptures(current, captures));
+    toast.success(`已批量确认 ${captures.length} 项`);
+  }
+
   function rejectCapture(captureId: string) {
     workspace.setData((current) => rejectCaptureWorkflow(current, captureId));
     toast("已驳回该采集项");
+  }
+
+  function archiveCapture(captureId: string) {
+    workspace.setData((current) => archiveCaptureWorkflow(current, captureId));
+    toast("已归档该采集项");
+  }
+
+  function archiveCaptures(captureIds: string[]) {
+    if (captureIds.length === 0) {
+      toast("暂无可归档的采集项");
+      return;
+    }
+
+    workspace.setData((current) => archiveCapturesWorkflow(current, captureIds));
+    toast(`已归档 ${captureIds.length} 项低置信采集`);
   }
 
   function addContact() {
@@ -1265,6 +1423,22 @@ export function LijiApp({ initialData }: LijiAppProps) {
                     </InputGroupButton>
                   </InputGroupAddon>
                 </InputGroup>
+                <div className="mt-2 grid grid-cols-2 gap-2 md:flex md:flex-wrap">
+                  {captureQuickStarts.map((template) => (
+                    <Button
+                      key={template.label}
+                      size="sm"
+                      variant="ghost"
+                      className="justify-start border px-2"
+                      aria-label={`快捷采集 ${template.label}`}
+                      disabled={isPending}
+                      onClick={() => runQuickCapture(template)}
+                    >
+                      <SparklesIcon data-icon="inline-start" />
+                      {template.label}
+                    </Button>
+                  ))}
+                </div>
               </div>
             </div>
           </header>
@@ -1282,9 +1456,13 @@ export function LijiApp({ initialData }: LijiAppProps) {
                   pendingCaptures={pendingCaptures}
                   relationshipBudget={relationshipBudget}
                   onConfirm={confirmCapture}
+                  onConfirmMany={confirmCaptures}
                   onReject={rejectCapture}
+                  onArchive={archiveCapture}
+                  onArchiveMany={archiveCaptures}
                   onEditCapture={updateCaptureDraft}
                   onBirthdayPlan={generateBirthdayPlan}
+                  onConfirmEvent={confirmEventRead}
                   onNavigate={setActiveSection}
                 />
               )}
@@ -1468,15 +1646,114 @@ function DashboardSection(props: {
   pendingCaptures: CaptureItem[];
   relationshipBudget: WorkspaceData["budgets"][number] | undefined;
   onConfirm: (capture: CaptureItem) => void;
+  onConfirmMany: (captures: CaptureItem[]) => void;
   onReject: (captureId: string) => void;
+  onArchive: (captureId: string) => void;
+  onArchiveMany: (captureIds: string[]) => void;
   onEditCapture: (captureId: string, patch: Partial<CaptureItem["parsed"]>) => void;
   onBirthdayPlan: () => void;
+  onConfirmEvent: (eventId: string) => void;
   onNavigate: (section: SectionId) => void;
 }) {
   const { data, pendingCaptures, relationshipBudget } = props;
+  const commandCenter = buildSecretaryCommandCenter({
+    data: {
+      ...data,
+      contacts: props.contacts,
+      events: props.events,
+      plans: props.plans,
+    },
+    levelTwoCards: props.levelTwoCards,
+  });
+  const timeline = buildSecretaryTimeline(data, 8);
+  const highConfidenceCaptures = pendingCaptures.filter((capture) => capture.parsed.confidence >= 0.75);
+  const lowConfidenceCaptures = pendingCaptures.filter((capture) => capture.parsed.confidence < 0.65);
+
+  function runAssistantAction(action: AssistantAction) {
+    if (action.id.startsWith("reminder:")) {
+      props.onConfirmEvent(action.id.replace("reminder:", ""));
+      return;
+    }
+
+    props.onNavigate(action.section);
+  }
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
+        <Card>
+          <CardHeader>
+            <CardTitle>今日秘书工作台</CardTitle>
+            <CardDescription>按风险、时效和资产缺口排序。</CardDescription>
+            <CardAction>
+              <Badge variant={assetStatusVariant(commandCenter.dataAssets.status)}>
+                资产分 {commandCenter.dataAssets.score}
+              </Badge>
+            </CardAction>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+              {commandCenter.actions.slice(0, 4).map((action) => (
+                <div key={action.id} className="flex min-h-32 flex-col justify-between rounded-lg border p-3">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={priorityBadgeVariant(action.priority)}>
+                        {priorityText(action.priority)}
+                      </Badge>
+                      <Badge variant="outline">{action.scenario}</Badge>
+                    </div>
+                    <div className="mt-2 font-medium">{action.title}</div>
+                    <p className="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground">{action.detail}</p>
+                  </div>
+                  <Button className="mt-3 w-fit" size="sm" variant="outline" onClick={() => runAssistantAction(action)}>
+                    {action.scenario === "reminder" ? <CheckIcon data-icon="inline-start" /> : <SearchIcon data-icon="inline-start" />}
+                    {action.cta}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>数据资产体检</CardTitle>
+            <CardDescription>{commandCenter.dataAssets.nextAssetAction}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col gap-3">
+              {commandCenter.dataAssets.items.map((asset) => (
+                <div key={asset.key} className="rounded-md border p-3">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium">{asset.label}</span>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={assetStatusVariant(asset.status)}>{assetStatusText(asset.status)}</Badge>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        aria-label={`补齐资产 ${asset.label}`}
+                        onClick={() => props.onNavigate(asset.section)}
+                      >
+                        {asset.status === "healthy" ? "查看" : "补齐"}
+                      </Button>
+                    </div>
+                  </div>
+                  <Progress value={Math.round((asset.owned / Math.max(1, asset.total)) * 100)}>
+                    <ProgressLabel>{asset.owned}/{asset.total}</ProgressLabel>
+                    <span className="ml-auto text-xs text-muted-foreground">{asset.gap}</span>
+                  </Progress>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[0.9fr_1.1fr]">
+        <AiContinuityCard report={commandCenter.aiContinuity} />
+        <ScenarioJourneyCard journeys={commandCenter.journeys} onNavigate={props.onNavigate} />
+      </div>
+
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <MetricCard
           title="待确认任务"
@@ -1504,10 +1781,28 @@ function DashboardSection(props: {
             <CardTitle>任务与确认中心</CardTitle>
             <CardDescription>AI 解析内容先确认，再写入画像、日程或账单。</CardDescription>
             <CardAction>
-              <Button size="sm" variant="outline" onClick={() => props.onNavigate("contacts")}>
-                <NotebookPenIcon data-icon="inline-start" />
-                修正记忆
-              </Button>
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  aria-label={`批量确认高置信采集 ${highConfidenceCaptures.length}`}
+                  disabled={highConfidenceCaptures.length === 0}
+                  onClick={() => props.onConfirmMany(highConfidenceCaptures)}
+                >
+                  <CheckIcon data-icon="inline-start" />
+                  确认高置信 {highConfidenceCaptures.length}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  aria-label={`归档低置信采集 ${lowConfidenceCaptures.length}`}
+                  disabled={lowConfidenceCaptures.length === 0}
+                  onClick={() => props.onArchiveMany(lowConfidenceCaptures.map((capture) => capture.id))}
+                >
+                  <ArchiveIcon data-icon="inline-start" />
+                  归档低置信 {lowConfidenceCaptures.length}
+                </Button>
+              </div>
             </CardAction>
           </CardHeader>
           <CardContent>
@@ -1515,7 +1810,7 @@ function DashboardSection(props: {
               {pendingCaptures.length === 0 ? (
                 <EmptyLine title="暂无待确认采集" detail="试试在顶部输入生日、差旅或账单。" />
               ) : (
-                pendingCaptures.slice(0, 3).map((capture) => (
+                pendingCaptures.map((capture) => (
                   <div key={capture.id} className="rounded-lg border p-3">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
@@ -1561,6 +1856,15 @@ function DashboardSection(props: {
                         >
                           <CheckIcon data-icon="inline-start" />
                           确认
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          aria-label={`归档采集 ${capture.parsed.title}`}
+                          onClick={() => props.onArchive(capture.id)}
+                        >
+                          <ArchiveIcon data-icon="inline-start" />
+                          归档
                         </Button>
                         <Button
                           size="sm"
@@ -1614,6 +1918,8 @@ function DashboardSection(props: {
           </CardFooter>
         </Card>
       </div>
+
+      <SecretaryTimelineCard timeline={timeline} onNavigate={props.onNavigate} />
 
       <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
         <Card>
@@ -1674,6 +1980,144 @@ function DashboardSection(props: {
         </Card>
       </div>
     </div>
+  );
+}
+
+function SecretaryTimelineCard({
+  timeline,
+  onNavigate,
+}: {
+  timeline: SecretaryTimelineItem[];
+  onNavigate: (section: SectionId) => void;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>秘书时间线</CardTitle>
+        <CardDescription>采集、提醒、履约、账单和投递日志统一串联。</CardDescription>
+        <CardAction>
+          <Badge variant={timeline.some((item) => item.status === "blocked") ? "destructive" : "secondary"}>
+            {timeline.filter((item) => item.status === "blocked" || item.status === "action").length} 个待处理
+          </Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        {timeline.length === 0 ? (
+          <EmptyLine title="暂无秘书时间线" detail="完成采集、提醒或履约后会自动沉淀。" />
+        ) : (
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            {timeline.map((item) => (
+              <div key={item.id} className="flex min-h-28 flex-col justify-between rounded-lg border p-3">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={timelineStatusVariant(item.status)}>
+                      {timelineStatusText(item.status)}
+                    </Badge>
+                    <Badge variant="outline">{item.category}</Badge>
+                    <span className="text-xs text-muted-foreground">{item.timestamp.slice(0, 10)}</span>
+                  </div>
+                  <div className="mt-2 font-medium">{item.title}</div>
+                  <p className="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground">{item.detail}</p>
+                </div>
+                <Button className="mt-3 w-fit" size="sm" variant="outline" onClick={() => onNavigate(item.section)}>
+                  <HistoryIcon data-icon="inline-start" />
+                  {item.cta}
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function AiContinuityCard({ report }: { report: AiContinuityReport }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>AI 连续性</CardTitle>
+        <CardDescription>
+          {report.mode === "cloud_assisted" ? "云端模型 + 本地兜底" : "本地规则护航"}
+        </CardDescription>
+        <CardAction>
+          <Badge variant={assetStatusVariant(report.status)}>{assetStatusText(report.status)}</Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div className="rounded-md border p-3">
+            <div className="mb-2 flex items-center gap-2 font-medium">
+              <BotIcon className="size-4 text-primary" />
+              不中断保障
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {report.safeguards.map((item) => (
+                <Badge key={item} variant="outline">{item}</Badge>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-md border p-3">
+            <div className="mb-2 flex items-center gap-2 font-medium">
+              <AlertTriangleIcon className="size-4 text-primary" />
+              待关注
+            </div>
+            {report.interruptionRisks.length > 0 ? (
+              <div className="flex flex-col gap-1 text-sm leading-6 text-muted-foreground">
+                {report.interruptionRisks.map((risk) => (
+                  <span key={risk}>{risk}</span>
+                ))}
+              </div>
+            ) : (
+              <div className="text-sm text-muted-foreground">当前链路稳定。</div>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ScenarioJourneyCard({
+  journeys,
+  onNavigate,
+}: {
+  journeys: ScenarioJourney[];
+  onNavigate: (section: SectionId) => void;
+}) {
+  const sectionByJourney: Record<ScenarioJourney["id"], SectionId> = {
+    relationship_care: "fulfillment",
+    bill_recap: "finance",
+    travel_fulfillment: "fulfillment",
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>场景流转</CardTitle>
+        <CardDescription>关系、账单、差旅的业务闭环进度。</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          {journeys.map((journey) => (
+            <div key={journey.id} className="rounded-md border p-3">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <span className="font-medium">{journey.label}</span>
+                <Badge variant={assetStatusVariant(journey.status)}>{journey.progress}%</Badge>
+              </div>
+              <Progress value={journey.progress}>
+                <ProgressLabel>{journey.currentStep}</ProgressLabel>
+              </Progress>
+              <p className="mt-2 min-h-10 text-sm leading-5 text-muted-foreground">{journey.nextStep}</p>
+              <Button className="mt-3" size="sm" variant="outline" onClick={() => onNavigate(sectionByJourney[journey.id])}>
+                <ActivityIcon data-icon="inline-start" />
+                继续推进
+              </Button>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -2343,6 +2787,9 @@ function OperationsSection({
     item.status === "held" || item.status === "pending_finance"
   );
   const openOpsAlerts = opsDashboard.opsAlerts.filter((item) => item.status !== "resolved");
+  const launchChecklist = opsDashboard.productionCheck
+    ? buildProductionLaunchChecklist(opsDashboard.productionCheck)
+    : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -2475,6 +2922,68 @@ function OperationsSection({
                   </div>
                 ))}
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>上线任务包</CardTitle>
+              <CardDescription>缺失配置、回调地址和验收命令集中交付。</CardDescription>
+              <CardAction>
+                <Badge variant={launchChecklist?.status === "ready" ? "secondary" : launchChecklist?.status === "blocked" ? "destructive" : "outline"}>
+                  {launchChecklist?.status ? launchTaskStatusText(launchChecklist.status) : "待检查"}
+                </Badge>
+              </CardAction>
+            </CardHeader>
+            <CardContent>
+              {launchChecklist ? (
+                <div className="flex flex-col gap-3">
+                  <div className="rounded-md border p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-medium">下一步：{launchChecklist.nextTask?.title ?? "生产检查已通过"}</span>
+                      <Badge variant={launchChecklist.nextTask ? launchTaskStatusVariant(launchChecklist.nextTask.status) : "secondary"}>
+                        {launchChecklist.nextTask ? `${launchChecklist.nextTask.priority} · ${launchChecklist.nextTask.ownerRole}` : "ready"}
+                      </Badge>
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                      {launchChecklist.nextTask?.checklist[0] ?? "继续执行生产验收命令并准备发布。"}
+                    </p>
+                  </div>
+                  <div>
+                    <div className="mb-2 text-sm font-medium">缺失环境变量</div>
+                    <div className="flex max-h-28 flex-wrap gap-1 overflow-auto">
+                      {launchChecklist.summary.missingEnvKeys.slice(0, 12).map((key) => (
+                        <Badge key={key} variant="outline">{key}</Badge>
+                      ))}
+                      {launchChecklist.summary.missingEnvKeys.length === 0 ? (
+                        <Badge variant="secondary">env complete</Badge>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="mb-2 text-sm font-medium">正式回调地址</div>
+                    <div className="flex flex-col gap-1 text-sm text-muted-foreground">
+                      {(launchChecklist.nextTask?.callbackUrls ?? []).length > 0 ? (
+                        launchChecklist.nextTask?.callbackUrls.map((url) => (
+                          <code key={url} className="rounded bg-muted px-2 py-1 text-xs text-foreground">{url}</code>
+                        ))
+                      ) : (
+                        <span>配置 LIJI_PUBLIC_APP_URL 后自动生成 provider 回调地址。</span>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="mb-2 text-sm font-medium">验收命令</div>
+                    <div className="flex flex-wrap gap-1">
+                      {(launchChecklist.nextTask?.commands ?? ["npm run prod:check"]).slice(0, 4).map((command) => (
+                        <Badge key={command} variant="outline">{command}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <EmptyLine title="待运行生产检查" detail="点击生产检查后生成上线任务包。" />
+              )}
             </CardContent>
           </Card>
 

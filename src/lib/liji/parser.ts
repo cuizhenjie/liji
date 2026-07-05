@@ -71,6 +71,25 @@ export function parseNaturalLanguageInput(
       notes: "建议生成礼物、蛋糕、餐饮三段式履约方案。",
       confidence: 0.88,
     };
+  } else if (
+    /宴请|饭局|拜访|客户会|会面|会议/.test(rawText) &&
+    /(今天|明天|后天|下周|本周|\d{1,2}月|\d{1,2}日|预算|额度|限额|在[\u4e00-\u9fa5]{2,8}|提醒|Level\s*1)/i.test(rawText)
+  ) {
+    const contactName = contact?.name ?? rawText.match(/([\u4e00-\u9fa5]{2,4})(?:下周|明天|后天|今天|客户|在)/)?.[1];
+
+    parsed = {
+      intent: "event",
+      title: `${contactName ?? "客户"}客户宴请`,
+      targetName: contact?.name ?? contactName,
+      relation: contact?.relation ?? "客户",
+      date: resolveRelativeChineseDate(rawText, now),
+      location: rawText.match(/在([\u4e00-\u9fa5]{2,8})/)?.[1],
+      amountCny: amount,
+      budgetCny: amount ?? 500,
+      reminderLevel: "level_1",
+      notes: "识别为商务关系维护事项，需确认预算、忌口和合规限制。",
+      confidence: 0.84,
+    };
   } else if (/房贷|水电|话费|保费|扣款/.test(rawText)) {
     parsed = {
       intent: "bill",

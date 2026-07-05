@@ -101,11 +101,42 @@ export function applyConfirmedCapture(
   return { ...base, aiMemories: [memory, ...base.aiMemories] };
 }
 
+export function applyConfirmedCaptures(
+  data: WorkspaceData,
+  captures: CaptureItem[],
+  now = new Date("2026-07-01T09:00:00+08:00")
+): WorkspaceData {
+  return captures.reduce(
+    (current, capture) => applyConfirmedCapture(current, capture, now),
+    data
+  );
+}
+
 export function rejectCapture(data: WorkspaceData, captureId: string): WorkspaceData {
   return {
     ...data,
     captures: data.captures.map((item) =>
       item.id === captureId ? { ...item, status: "rejected" } : item
+    ),
+  };
+}
+
+export function archiveCapture(data: WorkspaceData, captureId: string): WorkspaceData {
+  return {
+    ...data,
+    captures: data.captures.map((item) =>
+      item.id === captureId ? { ...item, status: "archived" } : item
+    ),
+  };
+}
+
+export function archiveCaptures(data: WorkspaceData, captureIds: string[]): WorkspaceData {
+  const ids = new Set(captureIds);
+
+  return {
+    ...data,
+    captures: data.captures.map((item) =>
+      ids.has(item.id) ? { ...item, status: "archived" } : item
     ),
   };
 }

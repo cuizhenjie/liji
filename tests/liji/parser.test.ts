@@ -22,4 +22,20 @@ describe("natural language parser", () => {
     expect(capture.parsed.endDate).toBe("2026-07-10");
     expect(capture.parsed.reminderLevel).toBe("level_1");
   });
+
+  it("keeps business hospitality in the event confirmation flow", () => {
+    const capture = parseNaturalLanguageInput(
+      "周明下周三在广州天河客户宴请，预算500元，不吃香菜，需要Level 1提醒",
+      demoContacts,
+      undefined,
+      "chat"
+    );
+
+    expect(capture.parsed.intent).toBe("event");
+    expect(capture.parsed.title).toBe("周明客户宴请");
+    expect(capture.parsed.targetName).toBe("周明");
+    expect(capture.parsed.budgetCny).toBe(500);
+    expect(capture.parsed.reminderLevel).toBe("level_1");
+    expect(capture.sourceType).toBe("chat");
+  });
 });

@@ -13,6 +13,7 @@ describe("production check report", () => {
     });
 
     expect(report.status).toBe("blocked");
+    expect(report.checks.some((item) => item.id === "supabase-public")).toBe(true);
     expect(report.callbacks[0].url).toBe("https://liji.example.com/api/capture/provider-callback");
     expect(report.migrations.every((item) => item.exists)).toBe(true);
     expect(report.commands).toContain("npm run prod:check");
