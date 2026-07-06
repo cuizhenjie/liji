@@ -53,7 +53,10 @@ describe("secretary command center", () => {
       scenario: "reminder",
     });
     expect(actions.some((action) => action.id === "capture:capture-low-confidence")).toBe(true);
-    expect(actions.some((action) => action.id === "level2:level2-demo")).toBe(true);
+    expect(actions.find((action) => action.id === "level2:level2-demo")).toMatchObject({
+      title: "李小满5岁生日履约方案待确认",
+      cta: "确认方案",
+    });
   });
 
   it("turns relationship, finance and memory coverage into an asset health report", () => {
@@ -73,6 +76,33 @@ describe("secretary command center", () => {
     expect(report.items.find((item) => item.key === "relationship")?.section).toBe("contacts");
     expect(report.items.find((item) => item.key === "finance")?.section).toBe("finance");
     expect(report.nextAssetAction).toContain("AI 记忆");
+  });
+
+  it("removes Level 2 fulfillment actions once the matching plan is confirmed", () => {
+    const actions = buildAssistantActions({
+      data: {
+        ...demoWorkspace,
+        events: demoWorkspace.events.map((event) =>
+          event.reminderLevel === "level_1" ? { ...event, status: "confirmed" } : event
+        ),
+        plans: demoWorkspace.plans.map((plan) =>
+          plan.eventId === "e-daughter-birthday" ? { ...plan, status: "confirmed" } : plan
+        ),
+      },
+      levelTwoCards: [{
+        id: "level2-demo",
+        eventId: "e-daughter-birthday",
+        title: "生日推荐卡",
+        date: "2026-07-10",
+        daysUntil: 2,
+        priority: "soon",
+        recommendation: "提前锁定礼物和蛋糕。",
+        actions: ["生成履约方案"],
+        warnings: [],
+      }],
+    });
+
+    expect(actions.some((action) => action.id === "level2:level2-demo")).toBe(false);
   });
 
   it("keeps AI work usable when cloud model access is unavailable", () => {

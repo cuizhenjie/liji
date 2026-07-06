@@ -129,22 +129,30 @@ export function buildAssistantActions(params: {
       cta: "处理确认",
       section: "dashboard" as const,
     })),
-    ...levelTwoCards.slice(0, 2).map((card) => ({
-      id: `level2:${card.id}`,
-      priority: card.priority === "today" || card.priority === "soon" ? "high" as const : "normal" as const,
-      scenario: "fulfillment" as const,
-      title: card.title,
-      detail: card.recommendation,
-      cta: "生成方案",
-      section: "fulfillment" as const,
-    })),
+    ...levelTwoCards.filter((card) => {
+      const plan = data.plans.find((item) => item.eventId === card.eventId);
+      return plan?.status !== "confirmed" && plan?.status !== "bookmarked";
+    }).slice(0, 2).map((card) => {
+      const plan = data.plans.find((item) => item.eventId === card.eventId);
+      const needsConfirmation = plan?.status === "draft" || plan?.status === "pending_confirmation";
+
+      return {
+        id: `level2:${card.id}`,
+        priority: card.priority === "today" || card.priority === "soon" ? "high" as const : "normal" as const,
+        scenario: "fulfillment" as const,
+        title: needsConfirmation ? `${plan.title}待确认` : card.title,
+        detail: needsConfirmation ? "已有方案，确认后会沉淀为履约资产并进入复盘。" : card.recommendation,
+        cta: needsConfirmation ? "确认方案" : "生成方案",
+        section: "fulfillment" as const,
+      };
+    }),
     ...reviewRequiredMemories(data).slice(0, 1).map((memory) => ({
       id: `memory:${memory.id}`,
       priority: "high" as const,
       scenario: "memory" as const,
       title: "复核 AI 记忆",
       detail: memory.content,
-      cta: "纠偏记忆",
+      cta: "复核记忆",
       section: "contacts" as const,
     })),
   ];

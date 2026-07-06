@@ -1043,8 +1043,11 @@ export function LijiApp({ initialData }: LijiAppProps) {
     toast("已移除联系人");
   }
 
-  function generateBirthdayPlan() {
-    const event = data.events.find((item) => item.id === "e-daughter-birthday") ?? data.events[0];
+  function generateBirthdayPlan(eventId?: string) {
+    const event =
+      (eventId ? data.events.find((item) => item.id === eventId) : undefined) ??
+      data.events.find((item) => item.id === "e-daughter-birthday") ??
+      data.events[0];
     const contact = data.contacts.find((item) => item.id === event.contactId);
     const plan = generateFestivalPlan(event, contact, Number(festivalBudget) || 2000, new Date());
     workspace.setPlans((plans) => [plan, ...plans]);
@@ -1578,6 +1581,7 @@ export function LijiApp({ initialData }: LijiAppProps) {
                   onBirthdayPlan={generateBirthdayPlan}
                   onConfirmEvent={confirmEventRead}
                   onConfirmPlan={confirmPlan}
+                  onCorrectMemory={correctMemory}
                   onNavigate={setActiveSection}
                 />
               )}
@@ -1771,9 +1775,10 @@ function DashboardSection(props: {
   onArchive: (captureId: string) => void;
   onArchiveMany: (captureIds: string[]) => void;
   onEditCapture: (captureId: string, patch: Partial<CaptureItem["parsed"]>) => void;
-  onBirthdayPlan: () => void;
+  onBirthdayPlan: (eventId?: string) => void;
   onConfirmEvent: (eventId: string) => void;
   onConfirmPlan: (planId: string) => void;
+  onCorrectMemory: (memoryId: string) => void;
   onNavigate: (section: SectionId) => void;
 }) {
   const { data, pendingCaptures, relationshipBudget } = props;
@@ -1803,6 +1808,35 @@ function DashboardSection(props: {
   function runAssistantAction(action: AssistantAction) {
     if (action.id.startsWith("reminder:")) {
       props.onConfirmEvent(action.id.replace("reminder:", ""));
+      return;
+    }
+
+    if (action.id.startsWith("capture:")) {
+      const capture = pendingCaptures.find((item) => action.id === `capture:${item.id}`);
+      if (capture && capture.parsed.confidence >= 0.75) {
+        props.onConfirm(capture);
+        return;
+      }
+
+      toast("低置信采集需要先编辑确认");
+      props.onNavigate("dashboard");
+      return;
+    }
+
+    if (action.id.startsWith("level2:")) {
+      const card = props.levelTwoCards.find((item) => action.id === `level2:${item.id}`);
+      const plan = props.plans.find((item) => item.eventId === card?.eventId);
+      if (plan && plan.status !== "confirmed" && plan.status !== "bookmarked") {
+        props.onConfirmPlan(plan.id);
+        return;
+      }
+
+      props.onBirthdayPlan(card?.eventId);
+      return;
+    }
+
+    if (action.id.startsWith("memory:")) {
+      props.onCorrectMemory(action.id.replace("memory:", ""));
       return;
     }
 
@@ -1863,7 +1897,13 @@ function DashboardSection(props: {
                     <div className="mt-2 font-medium">{action.title}</div>
                     <p className="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground">{action.detail}</p>
                   </div>
-                  <Button className="mt-3 w-fit" size="sm" variant="outline" onClick={() => runAssistantAction(action)}>
+                  <Button
+                    className="mt-3 w-fit"
+                    size="sm"
+                    variant="outline"
+                    aria-label={`执行秘书动作 ${action.title}`}
+                    onClick={() => runAssistantAction(action)}
+                  >
                     {action.scenario === "reminder" ? <CheckIcon data-icon="inline-start" /> : <SearchIcon data-icon="inline-start" />}
                     {action.cta}
                   </Button>
@@ -2053,7 +2093,7 @@ function DashboardSection(props: {
             <CardTitle>预算与履约</CardTitle>
             <CardDescription>额度拆解后生成可跳转方案，不保存支付凭证。</CardDescription>
             <CardAction>
-              <Button size="sm" onClick={props.onBirthdayPlan}>
+              <Button size="sm" onClick={() => props.onBirthdayPlan()}>
                 <SparklesIcon data-icon="inline-start" />
                 一键生成方案
               </Button>
@@ -2825,7 +2865,7 @@ function FulfillmentSection(props: {
   onTravelHotelStandard: (value: NonNullable<TravelPreference["hotelStandard"]>) => void;
   onTravelMealStandard: (value: NonNullable<TravelPreference["mealStandard"]>) => void;
   onTravelClientAddress: (value: string) => void;
-  onBirthdayPlan: () => void;
+  onBirthdayPlan: (eventId?: string) => void;
   onTravelPlan: () => void;
   onConfirmPlan: (planId: string) => void;
   onBookmarkPlan: (planId: string) => void;
@@ -2844,7 +2884,7 @@ function FulfillmentSection(props: {
                 <FieldLabel>总预算</FieldLabel>
                 <Input value={props.festivalBudget} onChange={(event) => props.onFestivalBudget(event.target.value)} inputMode="numeric" />
               </Field>
-              <Button onClick={props.onBirthdayPlan}>
+              <Button onClick={() => props.onBirthdayPlan()}>
                 <GiftIcon data-icon="inline-start" />
                 一键生成方案
               </Button>
