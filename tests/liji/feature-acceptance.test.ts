@@ -32,6 +32,7 @@ describe("feature acceptance matrix", () => {
       status: "needs_action",
       nextStep: "用户确认履约方案",
     });
+    expect(matrix.find((item) => item.id === "F302")?.checks.map((check) => check.id)).toContain("readiness");
     expect(matrix.find((item) => item.id === "F101")?.status).toBe("accepted");
     expect(matrix.find((item) => item.id === "N101")?.status).toBe("accepted");
     expect(matrix.every((item) => item.checks.length >= 4)).toBe(true);

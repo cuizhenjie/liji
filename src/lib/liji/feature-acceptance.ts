@@ -1,6 +1,7 @@
 import { buildFulfillmentConciergePack } from "./fulfillment-concierge";
 import { buildNextMonthReservePlan } from "./insights";
 import type { LevelTwoRecommendationCard } from "./level2-recommendations";
+import { buildTravelReadinessBrief } from "./travel-readiness";
 import type { Contact, WorkspaceData } from "./types";
 
 export type FeatureAcceptanceStatus = "accepted" | "needs_action" | "blocked";
@@ -253,6 +254,7 @@ function f302TravelFulfillment(data: WorkspaceData): FeatureAcceptanceItem {
   const travelPlan = data.plans.find((plan) => plan.scenario === "travel");
   const categories = new Set(travelPlan?.items.map((planItem) => planItem.category) ?? []);
   const travelBudget = data.budgets.find((budget) => budget.category === "travel");
+  const readinessBrief = travelPlan ? buildTravelReadinessBrief(travelPlan) : null;
   const checks: FeatureAcceptanceCheck[] = [
     {
       id: "travel-plan",
@@ -273,6 +275,12 @@ function f302TravelFulfillment(data: WorkspaceData): FeatureAcceptanceItem {
       label: "差旅预算仍有余量",
       passed: Boolean(travelBudget && travelBudget.totalCny > travelBudget.spentCny),
       detail: travelBudget ? `剩余 ${travelBudget.totalCny - travelBudget.spentCny} 元` : "缺少差旅预算",
+    },
+    {
+      id: "readiness",
+      label: "生成行前秘书包",
+      passed: Boolean(readinessBrief && readinessBrief.readinessScore >= 60 && readinessBrief.checklist.length >= 4),
+      detail: readinessBrief ? `准备度 ${readinessBrief.readinessScore}` : "缺少行前简报",
     },
     {
       id: "confirmation",

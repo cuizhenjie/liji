@@ -155,6 +155,7 @@ import {
 } from "@/lib/liji/secretary-timeline";
 import type { ServiceSmokeSuite } from "@/lib/liji/service-smoke";
 import { createSupabaseBrowserClient } from "@/lib/liji/supabase-browser";
+import { buildTravelReadinessBrief } from "@/lib/liji/travel-readiness";
 import type { TravelPreference } from "@/lib/liji/travel-options";
 import {
   acknowledgeEvent,
@@ -3867,6 +3868,7 @@ function PlanCard({
 }) {
   const trackedLinks = linksEnabled ? buildPlanFulfillmentLinks(plan) : [];
   const conciergePack = buildFulfillmentConciergePack(plan, contact);
+  const travelBrief = buildTravelReadinessBrief(plan);
 
   function recordFulfillmentClick(itemId: string, link: ReturnType<typeof buildPlanFulfillmentLinks>[number] | undefined) {
     if (!link) {
@@ -3980,6 +3982,39 @@ function PlanCard({
               </div>
             )}
           </div>
+          {travelBrief && (
+            <div className="rounded-lg border p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="font-medium">{travelBrief.title}</div>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{travelBrief.routeSummary}</p>
+                </div>
+                <Badge variant={travelBrief.readinessScore >= 80 ? "secondary" : travelBrief.readinessScore >= 60 ? "outline" : "destructive"}>
+                  准备度 {travelBrief.readinessScore}
+                </Badge>
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className="rounded-md bg-muted/50 p-3">
+                  <div className="text-xs font-medium text-muted-foreground">预算与距离</div>
+                  <p className="mt-1 text-sm leading-6">{travelBrief.budgetSummary}</p>
+                  <p className="text-sm leading-6 text-muted-foreground">{travelBrief.proximitySummary}</p>
+                </div>
+                <div className="rounded-md bg-muted/50 p-3">
+                  <div className="text-xs font-medium text-muted-foreground">下一步</div>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {travelBrief.nextActions.map((action) => (
+                      <Badge key={action} variant="outline">{action}</Badge>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-1">
+                {travelBrief.checklist.map((item) => (
+                  <Badge key={item} variant="secondary">{item}</Badge>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </CardContent>
       <CardFooter className="justify-between">

@@ -56,6 +56,8 @@ test("opens fulfillment and generates a travel plan", async ({ page }) => {
   await expect(page.getByText("随单放入手写祝福卡").first()).toBeVisible();
   await expect(page.getByText("广州商务差旅方案").first()).toBeVisible();
   await expect(page.getByText("行程交付包").first()).toBeVisible();
+  await expect(page.getByText("行前秘书包").first()).toBeVisible();
+  await expect(page.getByText(/酒店到客户地址控制在 3 公里内/).first()).toBeVisible();
   await expect(page.getByText("餐饮与打车弹性池").first()).toBeVisible();
 });
 

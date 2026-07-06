@@ -66,6 +66,7 @@ npx playwright install chromium webkit
 - 多身份与 VIP 详情：看板、人脉和日历支持全部/家庭/商务视图切换；VIP 详情展示偏好、合规、关联日程和往期礼物。
 - Level 2 推荐卡片：`/api/recommendations/level2` 与看板会按 15 天窗口生成每日推荐卡片，辅助提前锁定礼物/餐饮/预算。
 - 差旅偏好与报价：差旅方案支持出发地、起止日期、交通策略、住宿标准、餐饮标准和客户地址；`/api/travel/quotes` 可接外部报价 provider，未配置时回退内置候选。
+- 行前秘书包：差旅方案会生成准备度、交通住宿摘要、客户地址距离检查、弹性预算和行前确认清单，把差旅规划转成可执行安排。
 - 短信账单导入：`/api/capture/sms-import` 承接原生壳或短信 webhook 传入的账单短信，解析后进入待确认队列。
 - 联盟拉单与财务导出：`/api/fulfillment/provider-sync` 支持京东/淘宝/美团/携程/同程订单 API 拉单、HMAC 签名和字段归一化；`/api/fulfillment/export` 可导出履约对账 CSV。
 - 运营台 UI：新增运营页，集中处理 OCR/ASR SLA、通知异常重试、AI 记忆批量处理、联盟订单同步和真实服务就绪状态。
