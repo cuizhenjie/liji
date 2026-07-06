@@ -1,7 +1,12 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { getP0ReadinessActions, getReadinessChecks, summarizeReadiness } from "./health";
+import {
+  getP0ReadinessActions,
+  getReadinessChecks,
+  summarizeReadiness,
+  type ReadinessCheck,
+} from "./health";
 
 export type ProductionCallbackRoute = {
   id: string;
@@ -21,6 +26,7 @@ export type ProductionCheckReport = {
   generatedAt: string;
   status: "ready" | "blocked" | "needs_config";
   summary: ReturnType<typeof summarizeReadiness>;
+  checks: ReadinessCheck[];
   p0Actions: ReturnType<typeof getP0ReadinessActions>;
   callbacks: ProductionCallbackRoute[];
   migrations: ProductionMigrationCheck[];
@@ -119,6 +125,7 @@ export function buildProductionCheckReport(params: {
         ? "blocked"
         : "needs_config",
     summary,
+    checks,
     p0Actions,
     callbacks: callbackRoutes(env),
     migrations,

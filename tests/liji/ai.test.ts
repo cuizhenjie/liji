@@ -68,4 +68,25 @@ describe("AI parsing provider", () => {
       expect.objectContaining({ method: "POST" })
     );
   });
+
+  it("falls back to local rules when the cloud provider is interrupted", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    const fetcher = vi.fn(async () =>
+      Response.json({
+        output_text: "{broken-json",
+      })
+    );
+
+    const result = await parseInputWithProvider({
+      text: "周明下周三在广州天河客户宴请，预算500元",
+      contacts: demoContacts,
+      source: "chat",
+      allowCloudModel: true,
+      fetcher: fetcher as unknown as typeof fetch,
+    });
+
+    expect(result.provider).toBe("local-rules");
+    expect(result.capture.parsed.intent).toBe("event");
+    expect(result.capture.parsed.title).toBe("周明客户宴请");
+  });
 });

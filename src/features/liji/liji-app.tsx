@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 import {
   ActivityIcon,
   AlertTriangleIcon,
+  ArchiveIcon,
   BellRingIcon,
   BotIcon,
   CalendarDaysIcon,
@@ -94,16 +95,30 @@ import type {
   CpsPayoutBatch,
   OpsAlertLifecycleItem,
 } from "@/lib/liji/commercial-ops";
+import {
+  buildDataAssetRemediationTasks,
+  type DataAssetRemediationTask,
+} from "@/lib/liji/data-asset-remediation";
+import {
+  buildDataAssetLedger,
+  type DataAssetLedgerEntry,
+} from "@/lib/liji/data-asset-ledger";
 import type { EntitlementReport } from "@/lib/liji/entitlements";
+import {
+  buildFeatureAcceptanceMatrix,
+  type FeatureAcceptanceItem,
+} from "@/lib/liji/feature-acceptance";
 import {
   addRecurringBill as addRecurringBillToWorkspace,
   addTransaction as addTransactionToWorkspace,
   updateBudgetTotal,
 } from "@/lib/liji/finance";
 import { buildPlanFulfillmentLinks } from "@/lib/liji/fulfillment";
+import { buildFulfillmentConciergePack } from "@/lib/liji/fulfillment-concierge";
 import type { FulfillmentReconciliationDiscrepancy } from "@/lib/liji/fulfillment-reconciliation";
 import { createUuid } from "@/lib/liji/ids";
 import type { IntegrationStatus } from "@/lib/liji/integrations";
+import { buildNextMonthReservePlan, type NextMonthReservePlan } from "@/lib/liji/insights";
 import {
   buildLevelTwoRecommendationCards,
   type LevelTwoRecommendationCard,
@@ -117,18 +132,52 @@ import {
   loadWorkspaceData,
   saveWorkspaceData,
 } from "@/lib/liji/persistence";
+import { parseNaturalLanguageInput } from "@/lib/liji/parser";
+import {
+  buildPreferenceSuggestions,
+  type PreferenceSuggestion,
+} from "@/lib/liji/preference-suggestions";
 import { createDeletionRequest, exportWorkspaceData } from "@/lib/liji/privacy";
 import { registerBrowserPushSubscription } from "@/lib/liji/push";
 import type { NativeBridgeCapability } from "@/lib/liji/native-bridge";
 import type { NotificationFailureCodebookEntry } from "@/lib/liji/notification-governance";
 import type { ProductionCheckReport } from "@/lib/liji/production-check";
+import {
+  buildRelationshipActions,
+  type RelationshipAction,
+} from "@/lib/liji/relationship-actions";
+import {
+  buildProductionLaunchChecklist,
+  type ProductionLaunchTask,
+} from "@/lib/liji/production-launch";
+import {
+  buildScenarioAcceptance,
+  type ScenarioAcceptanceItem,
+} from "@/lib/liji/scenario-acceptance";
+import {
+  buildSecretaryCommandCenter,
+  type AiContinuityReport,
+  type AssistantAction,
+  type DataAssetItem,
+  type ScenarioJourney,
+} from "@/lib/liji/secretary-command-center";
+import {
+  buildSecretaryTimeline,
+  type SecretaryTimelineItem,
+} from "@/lib/liji/secretary-timeline";
 import type { ServiceSmokeSuite } from "@/lib/liji/service-smoke";
 import { createSupabaseBrowserClient } from "@/lib/liji/supabase-browser";
+import { buildTravelReadinessBrief } from "@/lib/liji/travel-readiness";
 import type { TravelPreference } from "@/lib/liji/travel-options";
 import {
   acknowledgeEvent,
   acknowledgeNotificationLog,
+  applyPreferenceSuggestion,
+  applyRelationshipAction,
   applyConfirmedCapture,
+  applyConfirmedCaptures,
+  archiveCapture as archiveCaptureWorkflow,
+  archiveCaptures as archiveCapturesWorkflow,
   rejectCapture as rejectCaptureWorkflow,
   setPlanStatus,
 } from "@/lib/liji/workflow";
@@ -160,6 +209,18 @@ type PrivacyToggleKey = Exclude<keyof PrivacySettings, "notificationPhone">;
 
 type LijiAppProps = {
   initialData: WorkspaceData;
+};
+
+type CaptureQuickStart = {
+  label: string;
+  source: CaptureSource;
+  text: string;
+};
+
+type ParseCaptureResponse = {
+  capture?: CaptureItem;
+  error?: string;
+  provider?: "local-rules" | "openai";
 };
 
 type OpsDashboardState = {
@@ -195,6 +256,29 @@ const identityOptions: Array<{ value: IdentityMode; label: string }> = [
   { value: "business", label: "商务" },
 ];
 
+const captureQuickStarts: CaptureQuickStart[] = [
+  {
+    label: "生日关怀",
+    source: "text",
+    text: "下周五是女儿5岁生日，预算2000元，提前准备礼物和蛋糕",
+  },
+  {
+    label: "客户宴请",
+    source: "chat",
+    text: "周明下周三在广州天河客户宴请，预算500元，不吃香菜，需要Level 1提醒",
+  },
+  {
+    label: "差旅行程",
+    source: "text",
+    text: "7月8日到7月10日从上海去广州出差，每天预算2400元，客户地址广州天河",
+  },
+  {
+    label: "账单短信",
+    source: "bill",
+    text: "【招商银行】您尾号8621账户房贷扣款12800元，交易时间2026-07-02。",
+  },
+];
+
 const currency = new Intl.NumberFormat("zh-CN", {
   style: "currency",
   currency: "CNY",
@@ -227,6 +311,30 @@ function captureSourceLabel(source: CaptureItem["sourceType"] | undefined) {
   };
 
   return map[source ?? "text"];
+}
+
+function preferenceCategoryText(category: PreferenceSuggestion["category"]) {
+  const map: Record<PreferenceSuggestion["category"], string> = {
+    food: "餐饮",
+    gift: "礼赠",
+    hobby: "兴趣",
+    avoid: "避雷",
+    travel: "差旅",
+  };
+
+  return map[category];
+}
+
+function relationshipScenarioText(scenario: RelationshipAction["scenario"]) {
+  const map: Record<RelationshipAction["scenario"], string> = {
+    event: "节点",
+    compliance: "合规",
+    profile: "画像",
+    memory: "记忆",
+    follow_up: "触达",
+  };
+
+  return map[scenario];
 }
 
 function identityLabel(mode: IdentityMode) {
@@ -268,6 +376,115 @@ function statusText(status: CaptureItem["status"] | FulfillmentPlan["status"]) {
     bookmarked: "已收藏",
   };
   return map[status] ?? status;
+}
+
+function priorityText(priority: AssistantAction["priority"]) {
+  if (priority === "critical") return "立即";
+  if (priority === "high") return "优先";
+  return "今日";
+}
+
+function priorityBadgeVariant(priority: AssistantAction["priority"]) {
+  if (priority === "critical") return "destructive" as const;
+  if (priority === "high") return "secondary" as const;
+  return "outline" as const;
+}
+
+function remediationPriorityText(priority: DataAssetRemediationTask["priority"]) {
+  if (priority === "critical") return "立即";
+  if (priority === "high") return "优先";
+  return "补齐";
+}
+
+function remediationPriorityVariant(priority: DataAssetRemediationTask["priority"]) {
+  if (priority === "critical") return "destructive" as const;
+  if (priority === "high") return "secondary" as const;
+  return "outline" as const;
+}
+
+function assetStatusText(status: DataAssetItem["status"]) {
+  if (status === "healthy") return "健康";
+  if (status === "attention") return "待补齐";
+  return "阻塞";
+}
+
+function assetStatusVariant(status: DataAssetItem["status"]) {
+  if (status === "healthy") return "secondary" as const;
+  if (status === "attention") return "outline" as const;
+  return "destructive" as const;
+}
+
+function ledgerStatusText(status: DataAssetLedgerEntry["status"]) {
+  if (status === "linked") return "已入库";
+  if (status === "needs_action") return "待补齐";
+  return "阻塞";
+}
+
+function ledgerStatusVariant(status: DataAssetLedgerEntry["status"]) {
+  if (status === "linked") return "secondary" as const;
+  if (status === "needs_action") return "outline" as const;
+  return "destructive" as const;
+}
+
+function timelineStatusText(status: SecretaryTimelineItem["status"]) {
+  if (status === "blocked") return "需处理";
+  if (status === "action") return "待推进";
+  if (status === "done") return "已闭环";
+  return "记录";
+}
+
+function timelineStatusVariant(status: SecretaryTimelineItem["status"]) {
+  if (status === "blocked") return "destructive" as const;
+  if (status === "action") return "secondary" as const;
+  return "outline" as const;
+}
+
+function launchTaskStatusText(status: ProductionLaunchTask["status"]) {
+  if (status === "ready") return "ready";
+  if (status === "blocked") return "blocked";
+  return "needs config";
+}
+
+function launchTaskStatusVariant(status: ProductionLaunchTask["status"]) {
+  if (status === "ready") return "secondary" as const;
+  if (status === "blocked") return "destructive" as const;
+  return "outline" as const;
+}
+
+function scenarioAcceptanceStatusText(status: ScenarioAcceptanceItem["status"]) {
+  if (status === "ready") return "已闭环";
+  if (status === "blocked") return "有阻塞";
+  return "待推进";
+}
+
+function scenarioAcceptanceStatusVariant(status: ScenarioAcceptanceItem["status"]) {
+  if (status === "ready") return "secondary" as const;
+  if (status === "blocked") return "destructive" as const;
+  return "outline" as const;
+}
+
+function featureAcceptanceStatusText(status: FeatureAcceptanceItem["status"]) {
+  if (status === "accepted") return "验收通过";
+  if (status === "blocked") return "阻塞";
+  return "待验收";
+}
+
+function featureAcceptanceStatusVariant(status: FeatureAcceptanceItem["status"]) {
+  if (status === "accepted") return "secondary" as const;
+  if (status === "blocked") return "destructive" as const;
+  return "outline" as const;
+}
+
+function reservePressureText(level: NextMonthReservePlan["pressureLevel"]) {
+  if (level === "high") return "高压力";
+  if (level === "medium") return "需预留";
+  return "健康";
+}
+
+function reservePressureVariant(level: NextMonthReservePlan["pressureLevel"]) {
+  if (level === "high") return "destructive" as const;
+  if (level === "medium") return "outline" as const;
+  return "secondary" as const;
 }
 
 function memoryReviewText(memory: AiMemory) {
@@ -649,36 +866,65 @@ export function LijiApp({ initialData }: LijiAppProps) {
     return () => window.clearTimeout(timer);
   }, [refreshOpsDashboard]);
 
-  async function handleParseCapture() {
-    if (!captureText.trim()) {
+  async function parseCaptureToInbox(params: {
+    text: string;
+    source: CaptureSource;
+    clearDraft?: boolean;
+  }) {
+    if (!params.text.trim()) {
       toast.error("请输入采集内容");
       return;
     }
 
     startTransition(async () => {
-      const response = await fetch("/api/parse-input", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: captureText,
-          source: captureSource,
-          allowCloudModel: data.privacy.cloudModelEnabled,
-        }),
-      });
-      const result = (await response.json()) as {
-        capture?: CaptureItem;
-        error?: string;
-        provider?: "local-rules" | "openai";
-      };
+      let result: ParseCaptureResponse;
 
-      if (!response.ok || !result.capture) {
-        toast.error(result.error ?? "解析失败");
-        return;
+      try {
+        const response = await fetch("/api/parse-input", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: params.text,
+            source: params.source,
+            allowCloudModel: data.privacy.cloudModelEnabled,
+          }),
+        });
+        result = (await response.json()) as ParseCaptureResponse;
+
+        if (!response.ok || !result.capture) {
+          throw new Error(result.error ?? "解析失败");
+        }
+      } catch {
+        result = {
+          capture: parseNaturalLanguageInput(params.text, data.contacts, new Date(), params.source),
+          provider: "local-rules",
+        };
       }
 
       workspace.setCaptures((captures) => [result.capture!, ...captures]);
-      setCaptureText("");
-      toast.success(result.provider === "openai" ? "云端 AI 已解析，待确认" : "已进入任务与确认中心");
+      if (params.clearDraft) {
+        setCaptureText("");
+      }
+      setActiveSection("dashboard");
+      toast.success(result.provider === "openai" ? "云端 AI 已解析，待确认" : "本地规则已接管，待确认");
+    });
+  }
+
+  async function handleParseCapture() {
+    await parseCaptureToInbox({
+      text: captureText,
+      source: captureSource,
+      clearDraft: true,
+    });
+  }
+
+  function runQuickCapture(template: CaptureQuickStart) {
+    setCaptureText(template.text);
+    setCaptureSource(template.source);
+    void parseCaptureToInbox({
+      text: template.text,
+      source: template.source,
+      clearDraft: true,
     });
   }
 
@@ -737,9 +983,34 @@ export function LijiApp({ initialData }: LijiAppProps) {
     toast.success("已确认并写入工作区");
   }
 
+  function confirmCaptures(captures: CaptureItem[]) {
+    if (captures.length === 0) {
+      toast("暂无可批量确认的采集项");
+      return;
+    }
+
+    workspace.setData((current) => applyConfirmedCaptures(current, captures));
+    toast.success(`已批量确认 ${captures.length} 项`);
+  }
+
   function rejectCapture(captureId: string) {
     workspace.setData((current) => rejectCaptureWorkflow(current, captureId));
     toast("已驳回该采集项");
+  }
+
+  function archiveCapture(captureId: string) {
+    workspace.setData((current) => archiveCaptureWorkflow(current, captureId));
+    toast("已归档该采集项");
+  }
+
+  function archiveCaptures(captureIds: string[]) {
+    if (captureIds.length === 0) {
+      toast("暂无可归档的采集项");
+      return;
+    }
+
+    workspace.setData((current) => archiveCapturesWorkflow(current, captureIds));
+    toast(`已归档 ${captureIds.length} 项低置信采集`);
   }
 
   function addContact() {
@@ -788,8 +1059,11 @@ export function LijiApp({ initialData }: LijiAppProps) {
     toast("已移除联系人");
   }
 
-  function generateBirthdayPlan() {
-    const event = data.events.find((item) => item.id === "e-daughter-birthday") ?? data.events[0];
+  function generateBirthdayPlan(eventId?: string) {
+    const event =
+      (eventId ? data.events.find((item) => item.id === eventId) : undefined) ??
+      data.events.find((item) => item.id === "e-daughter-birthday") ??
+      data.events[0];
     const contact = data.contacts.find((item) => item.id === event.contactId);
     const plan = generateFestivalPlan(event, contact, Number(festivalBudget) || 2000, new Date());
     workspace.setPlans((plans) => [plan, ...plans]);
@@ -1170,6 +1444,23 @@ export function LijiApp({ initialData }: LijiAppProps) {
     }));
   }
 
+  function confirmPreferenceSuggestion(suggestion: PreferenceSuggestion) {
+    workspace.setData((current) => applyPreferenceSuggestion(current, suggestion));
+    toast.success("偏好已写入画像");
+  }
+
+  function runRelationshipAction(action: RelationshipAction) {
+    setSelectedContactId(action.contactId);
+
+    if (action.scenario === "profile") {
+      toast("已定位画像缺口，请补充偏好或标签");
+      return;
+    }
+
+    workspace.setData((current) => applyRelationshipAction(current, action));
+    toast.success("关系行动已推进");
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="flex min-h-screen">
@@ -1265,6 +1556,22 @@ export function LijiApp({ initialData }: LijiAppProps) {
                     </InputGroupButton>
                   </InputGroupAddon>
                 </InputGroup>
+                <div className="mt-2 grid grid-cols-2 gap-2 md:flex md:flex-wrap">
+                  {captureQuickStarts.map((template) => (
+                    <Button
+                      key={template.label}
+                      size="sm"
+                      variant="ghost"
+                      className="justify-start border px-2"
+                      aria-label={`快捷采集 ${template.label}`}
+                      disabled={isPending}
+                      onClick={() => runQuickCapture(template)}
+                    >
+                      <SparklesIcon data-icon="inline-start" />
+                      {template.label}
+                    </Button>
+                  ))}
+                </div>
               </div>
             </div>
           </header>
@@ -1282,9 +1589,17 @@ export function LijiApp({ initialData }: LijiAppProps) {
                   pendingCaptures={pendingCaptures}
                   relationshipBudget={relationshipBudget}
                   onConfirm={confirmCapture}
+                  onConfirmMany={confirmCaptures}
                   onReject={rejectCapture}
+                  onArchive={archiveCapture}
+                  onArchiveMany={archiveCaptures}
                   onEditCapture={updateCaptureDraft}
                   onBirthdayPlan={generateBirthdayPlan}
+                  onTravelPlan={generateBusinessTravelPlan}
+                  onConfirmEvent={confirmEventRead}
+                  onConfirmLog={confirmLogRead}
+                  onConfirmPlan={confirmPlan}
+                  onCorrectMemory={correctMemory}
                   onNavigate={setActiveSection}
                 />
               )}
@@ -1308,6 +1623,8 @@ export function LijiApp({ initialData }: LijiAppProps) {
                   onSelectContact={setSelectedContactId}
                   onCorrectMemory={correctMemory}
                   onUpdateMemory={updateMemoryContent}
+                  onConfirmPreferenceSuggestion={confirmPreferenceSuggestion}
+                  onRelationshipAction={runRelationshipAction}
                   memoryReviewPending={isPending}
                 />
               )}
@@ -1354,6 +1671,9 @@ export function LijiApp({ initialData }: LijiAppProps) {
                   onAddTransaction={addFinanceTransaction}
                   onUpdateBudget={updateBudgetLimit}
                   onSmsCaptures={addSmsCaptures}
+                  onVoiceLedger={(text) => {
+                    void parseCaptureToInbox({ text, source: "voice", clearDraft: false });
+                  }}
                 />
               )}
               {activeSection === "ops" && (
@@ -1390,10 +1710,11 @@ export function LijiApp({ initialData }: LijiAppProps) {
               <RightRail
                 urgentEvents={urgentEvents}
                 logs={data.notificationLogs}
-                pendingCount={pendingCaptures.length}
+                pendingCaptures={pendingCaptures}
                 onNavigate={setActiveSection}
                 onConfirmEvent={confirmEventRead}
                 onConfirmLog={confirmLogRead}
+                onConfirmMany={confirmCaptures}
               />
             </aside>
           </div>
@@ -1468,15 +1789,470 @@ function DashboardSection(props: {
   pendingCaptures: CaptureItem[];
   relationshipBudget: WorkspaceData["budgets"][number] | undefined;
   onConfirm: (capture: CaptureItem) => void;
+  onConfirmMany: (captures: CaptureItem[]) => void;
   onReject: (captureId: string) => void;
+  onArchive: (captureId: string) => void;
+  onArchiveMany: (captureIds: string[]) => void;
   onEditCapture: (captureId: string, patch: Partial<CaptureItem["parsed"]>) => void;
-  onBirthdayPlan: () => void;
+  onBirthdayPlan: (eventId?: string) => void;
+  onTravelPlan: () => void;
+  onConfirmEvent: (eventId: string) => void;
+  onConfirmLog: (logId: string) => void;
+  onConfirmPlan: (planId: string) => void;
+  onCorrectMemory: (memoryId: string) => void;
   onNavigate: (section: SectionId) => void;
 }) {
   const { data, pendingCaptures, relationshipBudget } = props;
+  const scopedData = {
+    ...data,
+    contacts: props.contacts,
+    events: props.events,
+    plans: props.plans,
+  };
+  const commandCenter = buildSecretaryCommandCenter({
+    data: scopedData,
+    levelTwoCards: props.levelTwoCards,
+  });
+  const scenarioAcceptance = buildScenarioAcceptance({
+    data: scopedData,
+    levelTwoCards: props.levelTwoCards,
+  });
+  const featureAcceptance = buildFeatureAcceptanceMatrix({
+    data: scopedData,
+    levelTwoCards: props.levelTwoCards,
+  });
+  const remediationTasks = buildDataAssetRemediationTasks(scopedData, 6);
+  const assetLedger = buildDataAssetLedger(scopedData, 12);
+  const timeline = buildSecretaryTimeline(data, 8);
+  const highConfidenceCaptures = pendingCaptures.filter((capture) => capture.parsed.confidence >= 0.75);
+  const lowConfidenceCaptures = pendingCaptures.filter((capture) => capture.parsed.confidence < 0.65);
+
+  function runAssistantAction(action: AssistantAction) {
+    if (action.id.startsWith("reminder:")) {
+      props.onConfirmEvent(action.id.replace("reminder:", ""));
+      return;
+    }
+
+    if (action.id.startsWith("capture:")) {
+      const capture = pendingCaptures.find((item) => action.id === `capture:${item.id}`);
+      if (capture && capture.parsed.confidence >= 0.75) {
+        props.onConfirm(capture);
+        return;
+      }
+
+      toast("低置信采集需要先编辑确认");
+      props.onNavigate("dashboard");
+      return;
+    }
+
+    if (action.id.startsWith("level2:")) {
+      const card = props.levelTwoCards.find((item) => action.id === `level2:${item.id}`);
+      if (card) {
+        runLevelTwoRecommendationAction(card);
+      } else {
+        props.onBirthdayPlan();
+      }
+      return;
+    }
+
+    if (action.id.startsWith("memory:")) {
+      props.onCorrectMemory(action.id.replace("memory:", ""));
+      return;
+    }
+
+    props.onNavigate(action.section);
+  }
+
+  function runDataAssetHealthAction(asset: DataAssetItem) {
+    if (asset.key === "fulfillment") {
+      const pendingPlan = props.plans.find((plan) => plan.status === "draft" || plan.status === "pending_confirmation");
+      if (pendingPlan) {
+        props.onConfirmPlan(pendingPlan.id);
+        return;
+      }
+    }
+
+    if (asset.key === "memory") {
+      const reviewMemory = data.aiMemories.find((memory) =>
+        memory.reviewStatus === "review_required" || memory.reviewStatus === "stale"
+      );
+      if (reviewMemory) {
+        props.onCorrectMemory(reviewMemory.id);
+        return;
+      }
+    }
+
+    if (asset.key === "schedule") {
+      const unconfirmedLevelOne = props.events.find((event) =>
+        event.reminderLevel === "level_1" && event.status !== "confirmed" && event.status !== "done"
+      );
+      if (unconfirmedLevelOne) {
+        props.onConfirmEvent(unconfirmedLevelOne.id);
+        return;
+      }
+    }
+
+    props.onNavigate(asset.section);
+  }
+
+  function runLevelTwoRecommendationAction(card: LevelTwoRecommendationCard) {
+    const plan = props.plans.find((item) => item.eventId === card.eventId);
+    if (plan && plan.status !== "confirmed" && plan.status !== "bookmarked") {
+      props.onConfirmPlan(plan.id);
+      return;
+    }
+
+    if (!plan) {
+      props.onBirthdayPlan(card.eventId);
+      return;
+    }
+
+    props.onNavigate("fulfillment");
+  }
+
+  function levelTwoRecommendationCta(card: LevelTwoRecommendationCard) {
+    const plan = props.plans.find((item) => item.eventId === card.eventId);
+    if (!plan) return "生成方案";
+    return plan.status === "confirmed" || plan.status === "bookmarked" ? "查看方案" : "确认方案";
+  }
+
+  function runScenarioJourneyAction(journey: ScenarioJourney) {
+    if (journey.id === "relationship_care") {
+      const card = props.levelTwoCards[0];
+      if (card) {
+        runLevelTwoRecommendationAction(card);
+        return;
+      }
+
+      const festivalPlan = props.plans.find((plan) => plan.scenario === "festival");
+      if (festivalPlan && festivalPlan.status !== "confirmed" && festivalPlan.status !== "bookmarked") {
+        props.onConfirmPlan(festivalPlan.id);
+        return;
+      }
+
+      if (!festivalPlan) {
+        props.onBirthdayPlan();
+        return;
+      }
+    }
+
+    if (journey.id === "travel_fulfillment") {
+      const travelPlan = props.plans.find((plan) => plan.scenario === "travel");
+      if (travelPlan && travelPlan.status !== "confirmed" && travelPlan.status !== "bookmarked") {
+        props.onConfirmPlan(travelPlan.id);
+        return;
+      }
+
+      if (!travelPlan) {
+        props.onTravelPlan();
+        return;
+      }
+    }
+
+    if (journey.id === "bill_recap") {
+      const billEvent = props.events.find((event) =>
+        event.source === "bill" &&
+        event.reminderLevel === "level_1" &&
+        event.status !== "confirmed" &&
+        event.status !== "done"
+      );
+      if (billEvent) {
+        props.onConfirmEvent(billEvent.id);
+        return;
+      }
+    }
+
+    props.onNavigate(journey.id === "bill_recap" ? "finance" : "fulfillment");
+  }
+
+  function runScenarioAcceptanceAction(scenario: ScenarioAcceptanceItem) {
+    if (scenario.id === "birthday_care") {
+      const birthdayEvent = props.events.find((event) => /生日|纪念日/.test(event.title));
+      const plan = props.plans.find((item) =>
+        item.scenario === "festival" &&
+        (!birthdayEvent || item.eventId === birthdayEvent.id || item.title.includes("生日"))
+      );
+
+      if (plan && plan.status !== "confirmed" && plan.status !== "bookmarked") {
+        props.onConfirmPlan(plan.id);
+        return;
+      }
+
+      if (!plan) {
+        props.onBirthdayPlan(birthdayEvent?.id);
+        return;
+      }
+    }
+
+    if (scenario.id === "client_hospitality") {
+      const event = props.events.find((item) => /宴请|客户|会议|会面/.test(item.title));
+      if (event && event.reminderLevel === "level_1" && event.status !== "confirmed" && event.status !== "done") {
+        props.onConfirmEvent(event.id);
+        return;
+      }
+    }
+
+    if (scenario.id === "travel_planning") {
+      const plan = props.plans.find((item) => item.scenario === "travel");
+      if (plan && plan.status !== "confirmed" && plan.status !== "bookmarked") {
+        props.onConfirmPlan(plan.id);
+        return;
+      }
+
+      if (!plan) {
+        props.onTravelPlan();
+        return;
+      }
+    }
+
+    if (scenario.id === "bill_recap") {
+      const event = props.events.find((item) =>
+        item.source === "bill" &&
+        item.reminderLevel === "level_1" &&
+        item.status !== "confirmed" &&
+        item.status !== "done"
+      );
+      if (event) {
+        props.onConfirmEvent(event.id);
+        return;
+      }
+    }
+
+    props.onNavigate(scenario.section);
+  }
+
+  function runFeatureAcceptanceAction(feature: FeatureAcceptanceItem) {
+    if (feature.id === "F101") {
+      const reviewMemory = data.aiMemories.find((memory) =>
+        memory.reviewStatus === "review_required" || memory.reviewStatus === "stale"
+      );
+      if (reviewMemory) {
+        props.onCorrectMemory(reviewMemory.id);
+        return;
+      }
+    }
+
+    if (feature.id === "F201") {
+      if (highConfidenceCaptures.length > 0) {
+        props.onConfirmMany(highConfidenceCaptures);
+        return;
+      }
+
+      if (lowConfidenceCaptures.length > 0) {
+        toast("低置信采集需要先编辑确认");
+        props.onNavigate("dashboard");
+        return;
+      }
+    }
+
+    if (feature.id === "F202") {
+      const unconfirmedLevelOne = props.events.filter(
+        (event) => event.reminderLevel === "level_1" && event.status !== "confirmed" && event.status !== "done"
+      );
+      if (unconfirmedLevelOne.length > 0) {
+        unconfirmedLevelOne.forEach((event) => props.onConfirmEvent(event.id));
+        return;
+      }
+    }
+
+    if (feature.id === "F301" || feature.id === "F302") {
+      const targetScenario = feature.id === "F301" ? "festival" : "travel";
+      const plan = props.plans.find((item) => item.scenario === targetScenario);
+      if (plan && plan.status !== "confirmed" && plan.status !== "bookmarked") {
+        props.onConfirmPlan(plan.id);
+        return;
+      }
+      if (feature.id === "F301" && !plan) {
+        props.onBirthdayPlan();
+        return;
+      }
+      if (feature.id === "F302" && !plan) {
+        props.onTravelPlan();
+        return;
+      }
+    }
+
+    if (feature.id === "F401") {
+      const billCaptures = highConfidenceCaptures.filter((capture) => capture.parsed.intent === "bill");
+      if (billCaptures.length > 0) {
+        props.onConfirmMany(billCaptures);
+        return;
+      }
+
+      const billEvent = props.events.find((event) =>
+        event.source === "bill" &&
+        event.reminderLevel === "level_1" &&
+        event.status !== "confirmed" &&
+        event.status !== "done"
+      );
+      if (billEvent) {
+        props.onConfirmEvent(billEvent.id);
+        return;
+      }
+    }
+
+    props.onNavigate(feature.section);
+  }
+
+  function runRemediationTaskAction(task: DataAssetRemediationTask) {
+    if (task.id.startsWith("memory:")) {
+      props.onCorrectMemory(task.id.replace("memory:", ""));
+      return;
+    }
+
+    if (task.id.startsWith("fulfillment:")) {
+      const planId = task.id.replace("fulfillment:", "");
+      const plan = props.plans.find((item) => item.id === planId);
+      if (plan && plan.status !== "confirmed" && plan.status !== "bookmarked") {
+        props.onConfirmPlan(plan.id);
+        return;
+      }
+    }
+
+    props.onNavigate(task.section);
+  }
+
+  function runAssetLedgerAction(entry: DataAssetLedgerEntry) {
+    if (entry.status !== "linked" && entry.id.startsWith("fulfillment:")) {
+      const planId = entry.id.replace("fulfillment:", "");
+      const plan = props.plans.find((item) => item.id === planId);
+      if (plan && plan.status !== "confirmed" && plan.status !== "bookmarked") {
+        props.onConfirmPlan(plan.id);
+        return;
+      }
+    }
+
+    if (entry.status !== "linked" && entry.id.startsWith("memory:")) {
+      props.onCorrectMemory(entry.id.replace("memory:", ""));
+      return;
+    }
+
+    props.onNavigate(entry.section);
+  }
+
+  function runTimelineAction(item: SecretaryTimelineItem) {
+    if (item.id.startsWith("capture:")) {
+      const capture = pendingCaptures.find((entry) => item.id === `capture:${entry.id}`);
+      if (capture && capture.parsed.confidence >= 0.75) {
+        props.onConfirm(capture);
+        return;
+      }
+
+      toast("低置信采集需要先编辑确认");
+      props.onNavigate("dashboard");
+      return;
+    }
+
+    if (item.id.startsWith("event:")) {
+      const eventId = item.id.replace("event:", "");
+      const event = props.events.find((entry) => entry.id === eventId);
+      if (event && event.status !== "confirmed" && event.status !== "done") {
+        props.onConfirmEvent(event.id);
+        return;
+      }
+    }
+
+    if (item.id.startsWith("plan:")) {
+      const planId = item.id.replace("plan:", "");
+      const plan = props.plans.find((entry) => entry.id === planId);
+      if (plan && plan.status !== "confirmed" && plan.status !== "bookmarked") {
+        props.onConfirmPlan(plan.id);
+        return;
+      }
+    }
+
+    if (item.id.startsWith("notification:")) {
+      const logId = item.id.replace("notification:", "");
+      const log = data.notificationLogs.find((entry) => entry.id === logId);
+      if (log && (log.status === "queued" || log.status === "sent" || log.status === "escalated")) {
+        props.onConfirmLog(log.id);
+        return;
+      }
+    }
+
+    if (item.id.startsWith("memory:")) {
+      props.onCorrectMemory(item.id.replace("memory:", ""));
+      return;
+    }
+
+    props.onNavigate(item.section);
+  }
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
+        <Card>
+          <CardHeader>
+            <CardTitle>今日秘书工作台</CardTitle>
+            <CardDescription>按风险、时效和资产缺口排序。</CardDescription>
+            <CardAction>
+              <Badge variant={assetStatusVariant(commandCenter.dataAssets.status)}>
+                资产分 {commandCenter.dataAssets.score}
+              </Badge>
+            </CardAction>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+              {commandCenter.actions.slice(0, 4).map((action) => (
+                <div key={action.id} className="flex min-h-32 flex-col justify-between rounded-lg border p-3">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={priorityBadgeVariant(action.priority)}>
+                        {priorityText(action.priority)}
+                      </Badge>
+                      <Badge variant="outline">{action.scenario}</Badge>
+                    </div>
+                    <div className="mt-2 font-medium">{action.title}</div>
+                    <p className="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground">{action.detail}</p>
+                  </div>
+                  <Button
+                    className="mt-3 w-fit"
+                    size="sm"
+                    variant="outline"
+                    aria-label={`执行秘书动作 ${action.title}`}
+                    onClick={() => runAssistantAction(action)}
+                  >
+                    {action.scenario === "reminder" ? <CheckIcon data-icon="inline-start" /> : <SearchIcon data-icon="inline-start" />}
+                    {action.cta}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>数据资产体检</CardTitle>
+            <CardDescription>{commandCenter.dataAssets.nextAssetAction}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col gap-3">
+              {commandCenter.dataAssets.items.map((asset) => (
+                <DataAssetHealthRow
+                  key={asset.key}
+                  asset={asset}
+                  onAction={runDataAssetHealthAction}
+                />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[0.9fr_1.1fr]">
+        <AiContinuityCard report={commandCenter.aiContinuity} onAction={(section) => props.onNavigate(section)} />
+        <ScenarioJourneyCard journeys={commandCenter.journeys} onAction={runScenarioJourneyAction} />
+      </div>
+
+      <ScenarioAcceptanceCard scenarios={scenarioAcceptance} onAction={runScenarioAcceptanceAction} />
+
+      <FeatureAcceptanceMatrixCard features={featureAcceptance} onAction={runFeatureAcceptanceAction} />
+
+      <DataAssetRemediationCard tasks={remediationTasks} onAction={runRemediationTaskAction} />
+
+      <DataAssetLedgerCard entries={assetLedger} onAction={runAssetLedgerAction} />
+
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <MetricCard
           title="待确认任务"
@@ -1504,10 +2280,28 @@ function DashboardSection(props: {
             <CardTitle>任务与确认中心</CardTitle>
             <CardDescription>AI 解析内容先确认，再写入画像、日程或账单。</CardDescription>
             <CardAction>
-              <Button size="sm" variant="outline" onClick={() => props.onNavigate("contacts")}>
-                <NotebookPenIcon data-icon="inline-start" />
-                修正记忆
-              </Button>
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  aria-label={`批量确认高置信采集 ${highConfidenceCaptures.length}`}
+                  disabled={highConfidenceCaptures.length === 0}
+                  onClick={() => props.onConfirmMany(highConfidenceCaptures)}
+                >
+                  <CheckIcon data-icon="inline-start" />
+                  确认高置信 {highConfidenceCaptures.length}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  aria-label={`归档低置信采集 ${lowConfidenceCaptures.length}`}
+                  disabled={lowConfidenceCaptures.length === 0}
+                  onClick={() => props.onArchiveMany(lowConfidenceCaptures.map((capture) => capture.id))}
+                >
+                  <ArchiveIcon data-icon="inline-start" />
+                  归档低置信 {lowConfidenceCaptures.length}
+                </Button>
+              </div>
             </CardAction>
           </CardHeader>
           <CardContent>
@@ -1515,7 +2309,7 @@ function DashboardSection(props: {
               {pendingCaptures.length === 0 ? (
                 <EmptyLine title="暂无待确认采集" detail="试试在顶部输入生日、差旅或账单。" />
               ) : (
-                pendingCaptures.slice(0, 3).map((capture) => (
+                pendingCaptures.map((capture) => (
                   <div key={capture.id} className="rounded-lg border p-3">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
@@ -1565,6 +2359,15 @@ function DashboardSection(props: {
                         <Button
                           size="sm"
                           variant="outline"
+                          aria-label={`归档采集 ${capture.parsed.title}`}
+                          onClick={() => props.onArchive(capture.id)}
+                        >
+                          <ArchiveIcon data-icon="inline-start" />
+                          归档
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
                           aria-label={`驳回采集 ${capture.parsed.title}`}
                           onClick={() => props.onReject(capture.id)}
                         >
@@ -1585,7 +2388,7 @@ function DashboardSection(props: {
             <CardTitle>预算与履约</CardTitle>
             <CardDescription>额度拆解后生成可跳转方案，不保存支付凭证。</CardDescription>
             <CardAction>
-              <Button size="sm" onClick={props.onBirthdayPlan}>
+              <Button size="sm" onClick={() => props.onBirthdayPlan()}>
                 <SparklesIcon data-icon="inline-start" />
                 一键生成方案
               </Button>
@@ -1615,6 +2418,8 @@ function DashboardSection(props: {
         </Card>
       </div>
 
+      <SecretaryTimelineCard timeline={timeline} onAction={runTimelineAction} />
+
       <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
         <Card>
           <CardHeader>
@@ -1640,6 +2445,16 @@ function DashboardSection(props: {
                         <Badge key={action} variant="outline">{action}</Badge>
                       ))}
                     </div>
+                    <Button
+                      className="mt-3 w-fit"
+                      size="sm"
+                      variant="outline"
+                      aria-label={`执行Level 2推荐 ${card.title}`}
+                      onClick={() => runLevelTwoRecommendationAction(card)}
+                    >
+                      <SparklesIcon data-icon="inline-start" />
+                      {levelTwoRecommendationCta(card)}
+                    </Button>
                   </div>
                 ))
               )}
@@ -1677,6 +2492,434 @@ function DashboardSection(props: {
   );
 }
 
+function DataAssetHealthRow({
+  asset,
+  onAction,
+}: {
+  asset: DataAssetItem;
+  onAction: (asset: DataAssetItem) => void;
+}) {
+  const actionLabel = asset.status === "healthy" ? "查看资产" : "补齐资产";
+
+  return (
+    <div className="rounded-md border p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-sm font-medium">{asset.label}</span>
+        <div className="flex items-center gap-2">
+          <Badge variant={assetStatusVariant(asset.status)}>{assetStatusText(asset.status)}</Badge>
+          <Button
+            size="xs"
+            variant="ghost"
+            aria-label={`${actionLabel} ${asset.label}`}
+            onClick={() => onAction(asset)}
+          >
+            {asset.status === "healthy" ? "查看" : "补齐"}
+          </Button>
+        </div>
+      </div>
+      <Progress value={Math.round((asset.owned / Math.max(1, asset.total)) * 100)}>
+        <ProgressLabel>{asset.owned}/{asset.total}</ProgressLabel>
+        <span className="ml-auto text-xs text-muted-foreground">{asset.gap}</span>
+      </Progress>
+    </div>
+  );
+}
+
+function DataAssetLedgerCard({
+  entries,
+  onAction,
+}: {
+  entries: DataAssetLedgerEntry[];
+  onAction: (entry: DataAssetLedgerEntry) => void;
+}) {
+  const openCount = entries.filter((entry) => entry.status !== "linked").length;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>资产明细台账</CardTitle>
+        <CardDescription>解释每条关系、日程、账单、履约和 AI 记忆为什么被计入资产分。</CardDescription>
+        <CardAction>
+          <Badge variant={openCount > 0 ? "outline" : "secondary"}>{openCount} 项待处理</Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2 2xl:grid-cols-3">
+          {entries.map((entry) => (
+            <div key={entry.id} className="flex min-h-32 flex-col justify-between rounded-lg border p-3">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline">{entry.assetKey}</Badge>
+                  <Badge variant={ledgerStatusVariant(entry.status)}>{ledgerStatusText(entry.status)}</Badge>
+                  <span className="text-xs text-muted-foreground">{entry.evidence}</span>
+                </div>
+                <div className="mt-2 font-medium">{entry.title}</div>
+                <p className="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground">{entry.detail}</p>
+              </div>
+              <Button
+                className="mt-3 w-fit"
+                size="sm"
+                variant="outline"
+                aria-label={`${entry.status === "linked" ? "查看资产明细" : "执行资产明细"} ${entry.title}`}
+                onClick={() => onAction(entry)}
+              >
+                {entry.status === "linked" ? <SearchIcon data-icon="inline-start" /> : <CheckIcon data-icon="inline-start" />}
+                {entry.cta}
+              </Button>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DataAssetRemediationCard({
+  tasks,
+  onAction,
+}: {
+  tasks: DataAssetRemediationTask[];
+  onAction: (task: DataAssetRemediationTask) => void;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>资产补齐任务包</CardTitle>
+        <CardDescription>把关系、日程、账单、记忆和履约缺口转成下一步动作。</CardDescription>
+        <CardAction>
+          <Badge variant={tasks.some((task) => task.priority === "critical") ? "destructive" : tasks.length > 0 ? "outline" : "secondary"}>
+            {tasks.length} 项待补
+          </Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        {tasks.length === 0 ? (
+          <EmptyLine title="资产链路完整" detail="当前身份视图下暂无需要补齐的关系、日程或履约资产。" />
+        ) : (
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+            {tasks.map((task) => (
+              <div key={task.id} className="flex min-h-32 flex-col justify-between rounded-lg border p-3">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={remediationPriorityVariant(task.priority)}>
+                      {remediationPriorityText(task.priority)}
+                    </Badge>
+                    <Badge variant="outline">{task.assetKey}</Badge>
+                    <span className="text-xs text-muted-foreground">{task.evidence}</span>
+                  </div>
+                  <div className="mt-2 font-medium">{task.title}</div>
+                  <p className="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground">{task.detail}</p>
+                </div>
+                <Button
+                  className="mt-3 w-fit"
+                  size="sm"
+                  variant="outline"
+                  aria-label={`执行资产补齐 ${task.title}`}
+                  onClick={() => onAction(task)}
+                >
+                  <ClipboardCheckIcon data-icon="inline-start" />
+                  {task.cta}
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ScenarioAcceptanceCard({
+  scenarios,
+  onAction,
+}: {
+  scenarios: ScenarioAcceptanceItem[];
+  onAction: (scenario: ScenarioAcceptanceItem) => void;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>场景验收作战室</CardTitle>
+        <CardDescription>按生日、宴请、差旅、账单四条主线检查闭环卡点。</CardDescription>
+        <CardAction>
+          <Badge variant={scenarios.some((item) => item.status === "blocked") ? "destructive" : "secondary"}>
+            {scenarios.filter((item) => item.status !== "ready").length} 个待推进
+          </Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+          {scenarios.map((scenario) => (
+            <div key={scenario.id} className="rounded-lg border p-3">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="font-medium">{scenario.label}</div>
+                <Badge variant={scenarioAcceptanceStatusVariant(scenario.status)}>
+                  {scenarioAcceptanceStatusText(scenario.status)}
+                </Badge>
+              </div>
+              <Progress value={scenario.progress}>
+                <ProgressLabel>{scenario.progress}%</ProgressLabel>
+                <span className="ml-auto text-xs text-muted-foreground">{scenario.nextStep}</span>
+              </Progress>
+              <p className="mt-2 line-clamp-2 text-sm leading-6 text-muted-foreground">{scenario.currentStep}</p>
+              <div className="mt-3 flex flex-wrap gap-1">
+                {scenario.checks.map((check) => (
+                  <Badge key={check.id} variant={check.passed ? "secondary" : check.critical ? "destructive" : "outline"}>
+                    {check.passed ? "✓" : "!"} {check.label}
+                  </Badge>
+                ))}
+              </div>
+              <Button
+                className="mt-3"
+                size="sm"
+                variant="outline"
+                aria-label={`执行场景验收 ${scenario.label}`}
+                onClick={() => onAction(scenario)}
+              >
+                <ListChecksIcon data-icon="inline-start" />
+                {scenario.cta}
+              </Button>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function FeatureAcceptanceMatrixCard({
+  features,
+  onAction,
+}: {
+  features: FeatureAcceptanceItem[];
+  onAction: (feature: FeatureAcceptanceItem) => void;
+}) {
+  const openCount = features.filter((feature) => feature.status !== "accepted").length;
+  const hasBlocked = features.some((feature) => feature.status === "blocked");
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>功能验收矩阵</CardTitle>
+        <CardDescription>对照需求功能 ID 自动检查秘书能力、数据资产和确认闭环。</CardDescription>
+        <CardAction>
+          <Badge variant={hasBlocked ? "destructive" : openCount > 0 ? "outline" : "secondary"}>
+            {openCount} 项待验收
+          </Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+          {features.map((feature) => (
+            <div key={feature.id} className="flex min-h-48 flex-col justify-between rounded-lg border p-3">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline">{feature.id}</Badge>
+                  <Badge variant={featureAcceptanceStatusVariant(feature.status)}>
+                    {featureAcceptanceStatusText(feature.status)}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">{feature.module}</span>
+                </div>
+                <div className="mt-2 font-medium">{feature.id} · {feature.label}</div>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">{feature.evidence}</p>
+                <Progress className="mt-3" value={feature.progress}>
+                  <ProgressLabel>{feature.progress}%</ProgressLabel>
+                  <span className="ml-auto text-xs text-muted-foreground">{feature.nextStep}</span>
+                </Progress>
+                <div className="mt-3 flex flex-wrap gap-1">
+                  {feature.checks.map((check) => (
+                    <Badge key={check.id} variant={check.passed ? "secondary" : check.critical ? "destructive" : "outline"}>
+                      {check.passed ? "✓" : "!"} {check.label}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+              <Button
+                className="mt-3 w-fit"
+                size="sm"
+                variant="outline"
+                aria-label={`执行功能验收 ${feature.id} ${feature.label} ${feature.cta}`}
+                onClick={() => onAction(feature)}
+              >
+                <ClipboardCheckIcon data-icon="inline-start" />
+                {feature.cta}
+              </Button>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SecretaryTimelineCard({
+  timeline,
+  onAction,
+}: {
+  timeline: SecretaryTimelineItem[];
+  onAction: (item: SecretaryTimelineItem) => void;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>秘书时间线</CardTitle>
+        <CardDescription>采集、提醒、履约、账单和投递日志统一串联。</CardDescription>
+        <CardAction>
+          <Badge variant={timeline.some((item) => item.status === "blocked") ? "destructive" : "secondary"}>
+            {timeline.filter((item) => item.status === "blocked" || item.status === "action").length} 个待处理
+          </Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        {timeline.length === 0 ? (
+          <EmptyLine title="暂无秘书时间线" detail="完成采集、提醒或履约后会自动沉淀。" />
+        ) : (
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            {timeline.map((item) => (
+              <div key={item.id} className="flex min-h-28 flex-col justify-between rounded-lg border p-3">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={timelineStatusVariant(item.status)}>
+                      {timelineStatusText(item.status)}
+                    </Badge>
+                    <Badge variant="outline">{item.category}</Badge>
+                    <span className="text-xs text-muted-foreground">{item.timestamp.slice(0, 10)}</span>
+                  </div>
+                  <div className="mt-2 font-medium">{item.title}</div>
+                  <p className="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground">{item.detail}</p>
+                </div>
+                <Button
+                  className="mt-3 w-fit"
+                  size="sm"
+                  variant="outline"
+                  aria-label={`执行时间线动作 ${item.title}`}
+                  onClick={() => onAction(item)}
+                >
+                  {item.status === "done" || item.status === "info" ? <HistoryIcon data-icon="inline-start" /> : <CheckIcon data-icon="inline-start" />}
+                  {item.cta}
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function AiContinuityCard({
+  report,
+  onAction,
+}: {
+  report: AiContinuityReport;
+  onAction: (section: SectionId) => void;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>AI 连续性</CardTitle>
+        <CardDescription>
+          {report.mode === "cloud_assisted" ? "云端模型 + 本地兜底" : "本地规则护航"}
+        </CardDescription>
+        <CardAction>
+          <Badge variant={assetStatusVariant(report.status)}>{assetStatusText(report.status)}</Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div className="rounded-md border p-3">
+            <div className="mb-2 flex items-center gap-2 font-medium">
+              <BotIcon className="size-4 text-primary" />
+              不中断保障
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {report.safeguards.map((item) => (
+                <Badge key={item} variant="outline">{item}</Badge>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-md border p-3">
+            <div className="mb-2 flex items-center gap-2 font-medium">
+              <AlertTriangleIcon className="size-4 text-primary" />
+              待关注
+            </div>
+            {report.interruptionRisks.length > 0 ? (
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-1 text-sm leading-6 text-muted-foreground">
+                  {report.interruptionRisks.map((risk) => (
+                    <span key={risk}>{risk}</span>
+                  ))}
+                </div>
+                {report.actions.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {report.actions.map((action) => (
+                      <Button
+                        key={action.id}
+                        size="sm"
+                        variant="outline"
+                        aria-label={`执行AI连续性动作 ${action.label}`}
+                        onClick={() => onAction(action.section)}
+                      >
+                        {action.id === "privacy_authorization" ? <ShieldCheckIcon data-icon="inline-start" /> : <CheckIcon data-icon="inline-start" />}
+                        {action.label}
+                      </Button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="text-sm text-muted-foreground">当前链路稳定。</div>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ScenarioJourneyCard({
+  journeys,
+  onAction,
+}: {
+  journeys: ScenarioJourney[];
+  onAction: (journey: ScenarioJourney) => void;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>场景流转</CardTitle>
+        <CardDescription>关系、账单、差旅的业务闭环进度。</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          {journeys.map((journey) => (
+            <div key={journey.id} className="rounded-md border p-3">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <span className="font-medium">{journey.label}</span>
+                <Badge variant={assetStatusVariant(journey.status)}>{journey.progress}%</Badge>
+              </div>
+              <Progress value={journey.progress}>
+                <ProgressLabel>{journey.currentStep}</ProgressLabel>
+              </Progress>
+              <p className="mt-2 min-h-10 text-sm leading-5 text-muted-foreground">{journey.nextStep}</p>
+              <Button
+                className="mt-3"
+                size="sm"
+                variant="outline"
+                aria-label={`执行场景流转 ${journey.label}`}
+                onClick={() => onAction(journey)}
+              >
+                {journey.status === "healthy" ? <ActivityIcon data-icon="inline-start" /> : <CheckIcon data-icon="inline-start" />}
+                继续推进
+              </Button>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function ContactsSection(props: {
   data: WorkspaceData;
   contacts: Contact[];
@@ -1696,9 +2939,26 @@ function ContactsSection(props: {
   onSelectContact: (id: string) => void;
   onCorrectMemory: (id: string) => void;
   onUpdateMemory: (id: string, content: string) => void;
+  onConfirmPreferenceSuggestion: (suggestion: PreferenceSuggestion) => void;
+  onRelationshipAction: (action: RelationshipAction) => void;
   memoryReviewPending: boolean;
 }) {
   const selectedContact = props.contacts.find((contact) => contact.id === props.selectedContactId);
+  const visibleContactIds = new Set(props.contacts.map((contact) => contact.id));
+  const preferenceSuggestions = buildPreferenceSuggestions(props.data)
+    .filter((suggestion) => visibleContactIds.has(suggestion.contactId))
+    .sort((left, right) => {
+      if (left.contactId === props.selectedContactId) return -1;
+      if (right.contactId === props.selectedContactId) return 1;
+      return right.confidence - left.confidence;
+    });
+  const relationshipActions = buildRelationshipActions(props.data)
+    .filter((action) => visibleContactIds.has(action.contactId))
+    .sort((left, right) => {
+      if (left.contactId === props.selectedContactId) return -1;
+      if (right.contactId === props.selectedContactId) return 1;
+      return 0;
+    });
   const contactEvents = selectedContact
     ? props.events.filter((event) => event.contactId === selectedContact.id)
     : [];
@@ -1791,6 +3051,101 @@ function ContactsSection(props: {
                     </div>
                   </div>
                 </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <CardTitle>关系健康行动</CardTitle>
+                <CardDescription>把画像、日程、合规和记忆转成下一步秘书动作。</CardDescription>
+              </div>
+              <Badge variant="secondary">{relationshipActions.length}</Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {relationshipActions.length === 0 ? (
+              <EmptyLine title="关系链路健康" detail="当前身份视图暂无需要补齐或推进的 VIP 动作。" />
+            ) : (
+              <div className="flex flex-col gap-3">
+                {relationshipActions.slice(0, 5).map((action) => (
+                  <div key={action.id} className="rounded-lg border p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant={priorityBadgeVariant(action.priority)}>
+                            {priorityText(action.priority)}
+                          </Badge>
+                          <Badge variant="outline">{relationshipScenarioText(action.scenario)}</Badge>
+                        </div>
+                        <div className="mt-2 font-medium">{action.title}</div>
+                        <p className="mt-1 text-sm leading-5 text-muted-foreground">{action.detail}</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-3 text-sm text-muted-foreground">
+                      <span>{action.evidence}</span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        aria-label={`执行关系行动 ${action.contactName} ${action.title}`}
+                        onClick={() => props.onRelationshipAction(action)}
+                      >
+                        <UserRoundIcon data-icon="inline-start" />
+                        {action.cta}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <CardTitle>偏好入库建议</CardTitle>
+                <CardDescription>AI 记忆先生成建议，确认后才写入 VIP 偏好矩阵。</CardDescription>
+              </div>
+              <Badge variant="secondary">{preferenceSuggestions.length}</Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {preferenceSuggestions.length === 0 ? (
+              <EmptyLine title="暂无偏好建议" detail="新的聊天、截图或账单记忆确认后会出现在这里。" />
+            ) : (
+              <div className="flex flex-col gap-3">
+                {preferenceSuggestions.slice(0, 5).map((suggestion) => (
+                  <div key={suggestion.id} className="rounded-lg border p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-medium">
+                          {suggestion.contactName} · {suggestion.label}
+                        </div>
+                        <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                          {suggestion.evidence}
+                        </p>
+                      </div>
+                      <Badge variant="outline">{preferenceCategoryText(suggestion.category)}</Badge>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-3 text-sm text-muted-foreground">
+                      <span>置信度 {Math.round(suggestion.confidence * 100)}%</span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        aria-label={`写入偏好 ${suggestion.contactName} ${suggestion.label}`}
+                        onClick={() => props.onConfirmPreferenceSuggestion(suggestion)}
+                      >
+                        <CheckIcon data-icon="inline-start" />
+                        写入偏好
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </CardContent>
@@ -1945,7 +3300,7 @@ function FulfillmentSection(props: {
   onTravelHotelStandard: (value: NonNullable<TravelPreference["hotelStandard"]>) => void;
   onTravelMealStandard: (value: NonNullable<TravelPreference["mealStandard"]>) => void;
   onTravelClientAddress: (value: string) => void;
-  onBirthdayPlan: () => void;
+  onBirthdayPlan: (eventId?: string) => void;
   onTravelPlan: () => void;
   onConfirmPlan: (planId: string) => void;
   onBookmarkPlan: (planId: string) => void;
@@ -1964,7 +3319,7 @@ function FulfillmentSection(props: {
                 <FieldLabel>总预算</FieldLabel>
                 <Input value={props.festivalBudget} onChange={(event) => props.onFestivalBudget(event.target.value)} inputMode="numeric" />
               </Field>
-              <Button onClick={props.onBirthdayPlan}>
+              <Button onClick={() => props.onBirthdayPlan()}>
                 <GiftIcon data-icon="inline-start" />
                 一键生成方案
               </Button>
@@ -2070,6 +3425,7 @@ function FulfillmentSection(props: {
           <PlanCard
             key={plan.id}
             plan={plan}
+            contact={props.data.contacts.find((contact) => contact.id === plan.contactId)}
             linksEnabled={props.data.privacy.thirdPartyLinksEnabled}
             onConfirm={props.onConfirmPlan}
             onBookmark={props.onBookmarkPlan}
@@ -2086,12 +3442,14 @@ function FinanceSection({
   onAddTransaction,
   onUpdateBudget,
   onSmsCaptures,
+  onVoiceLedger,
 }: {
   data: WorkspaceData;
   onAddBill: (input: { title: string; amountCny: number; dueDay: number; accountLabel: string }) => void;
   onAddTransaction: (input: { title: string; amountCny: number; category: Transaction["category"] }) => void;
   onUpdateBudget: (budgetId: string, totalCny: number) => void;
   onSmsCaptures: (captures: CaptureItem[]) => void;
+  onVoiceLedger: (text: string) => void;
 }) {
   const [billTitle, setBillTitle] = useState("物业/水电");
   const [billAmount, setBillAmount] = useState("680");
@@ -2101,6 +3459,9 @@ function FinanceSection({
   const [transactionAmount, setTransactionAmount] = useState("268");
   const [transactionCategory, setTransactionCategory] = useState<Transaction["category"]>("relationship");
   const [smsImportText, setSmsImportText] = useState("【招商银行】您尾号8621账户房贷扣款12800元，交易时间2026-07-02。");
+  const [voiceLedgerText, setVoiceLedgerText] = useState("今天吃饭花了125元");
+  const [voicePressed, setVoicePressed] = useState(false);
+  const reservePlan = buildNextMonthReservePlan(data);
 
   function submitBill() {
     const amountCny = Number(billAmount);
@@ -2155,8 +3516,62 @@ function FinanceSection({
     onSmsCaptures(payload.captures);
   }
 
+  function submitVoiceLedger() {
+    if (!voiceLedgerText.trim()) {
+      toast.error("请说出或输入记账内容");
+      return;
+    }
+
+    setVoicePressed(false);
+    onVoiceLedger(voiceLedgerText);
+  }
+
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      <Card>
+        <CardHeader>
+          <CardTitle>语音轻量记账</CardTitle>
+          <CardDescription>长按说一句，AI 先解析到确认中心，再写入日常流水。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <FieldGroup>
+            <Field>
+              <FieldLabel>口述内容</FieldLabel>
+              <Textarea
+                aria-label="语音记账内容"
+                value={voiceLedgerText}
+                onChange={(event) => setVoiceLedgerText(event.target.value)}
+                rows={3}
+              />
+              <FieldDescription>示例：今天吃饭花了125元、打车花了68元、买咖啡29元。</FieldDescription>
+            </Field>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+              {["今天吃饭花了125元", "打车去客户公司花了68元", "买咖啡29元"].map((sample) => (
+                <Button
+                  key={sample}
+                  size="sm"
+                  variant="outline"
+                  aria-label={`语音记账示例 ${sample}`}
+                  onClick={() => setVoiceLedgerText(sample)}
+                >
+                  {sample}
+                </Button>
+              ))}
+            </div>
+            <Button
+              onClick={submitVoiceLedger}
+              onPointerDown={() => setVoicePressed(true)}
+              onPointerCancel={() => setVoicePressed(false)}
+              onPointerLeave={() => setVoicePressed(false)}
+              aria-label="长按语音记账"
+            >
+              <NotebookPenIcon data-icon="inline-start" />
+              {voicePressed ? "松开发送到确认中心" : "长按语音记账"}
+            </Button>
+          </FieldGroup>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>短信账单导入</CardTitle>
@@ -2301,6 +3716,37 @@ function FinanceSection({
               </div>
             ))}
           </div>
+          <Separator className="my-4" />
+          <div>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="font-medium">下月预留预算方案</div>
+                <div className="mt-1 text-sm text-muted-foreground">
+                  {reservePlan.period} 建议预留 {formatCny(reservePlan.totalReserveCny)}
+                </div>
+              </div>
+              <Badge variant={reservePressureVariant(reservePlan.pressureLevel)}>
+                {reservePressureText(reservePlan.pressureLevel)}
+              </Badge>
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {reservePlan.items.map((item) => (
+                <div key={item.id} className="rounded-lg border p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-medium">{item.label}</div>
+                    <div className="font-semibold">{formatCny(item.amountCny)}</div>
+                  </div>
+                  <Progress className="mt-2" value={Math.round((item.amountCny / Math.max(1, reservePlan.totalReserveCny)) * 100)}>
+                    <ProgressLabel>{item.category}</ProgressLabel>
+                    <span className="ml-auto text-xs text-muted-foreground">
+                      {Math.round((item.amountCny / Math.max(1, reservePlan.totalReserveCny)) * 100)}%
+                    </span>
+                  </Progress>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.rationale}</p>
+                </div>
+              ))}
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -2343,6 +3789,9 @@ function OperationsSection({
     item.status === "held" || item.status === "pending_finance"
   );
   const openOpsAlerts = opsDashboard.opsAlerts.filter((item) => item.status !== "resolved");
+  const launchChecklist = opsDashboard.productionCheck
+    ? buildProductionLaunchChecklist(opsDashboard.productionCheck)
+    : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -2475,6 +3924,68 @@ function OperationsSection({
                   </div>
                 ))}
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>上线任务包</CardTitle>
+              <CardDescription>缺失配置、回调地址和验收命令集中交付。</CardDescription>
+              <CardAction>
+                <Badge variant={launchChecklist?.status === "ready" ? "secondary" : launchChecklist?.status === "blocked" ? "destructive" : "outline"}>
+                  {launchChecklist?.status ? launchTaskStatusText(launchChecklist.status) : "待检查"}
+                </Badge>
+              </CardAction>
+            </CardHeader>
+            <CardContent>
+              {launchChecklist ? (
+                <div className="flex flex-col gap-3">
+                  <div className="rounded-md border p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-medium">下一步：{launchChecklist.nextTask?.title ?? "生产检查已通过"}</span>
+                      <Badge variant={launchChecklist.nextTask ? launchTaskStatusVariant(launchChecklist.nextTask.status) : "secondary"}>
+                        {launchChecklist.nextTask ? `${launchChecklist.nextTask.priority} · ${launchChecklist.nextTask.ownerRole}` : "ready"}
+                      </Badge>
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                      {launchChecklist.nextTask?.checklist[0] ?? "继续执行生产验收命令并准备发布。"}
+                    </p>
+                  </div>
+                  <div>
+                    <div className="mb-2 text-sm font-medium">缺失环境变量</div>
+                    <div className="flex max-h-28 flex-wrap gap-1 overflow-auto">
+                      {launchChecklist.summary.missingEnvKeys.slice(0, 12).map((key) => (
+                        <Badge key={key} variant="outline">{key}</Badge>
+                      ))}
+                      {launchChecklist.summary.missingEnvKeys.length === 0 ? (
+                        <Badge variant="secondary">env complete</Badge>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="mb-2 text-sm font-medium">正式回调地址</div>
+                    <div className="flex flex-col gap-1 text-sm text-muted-foreground">
+                      {(launchChecklist.nextTask?.callbackUrls ?? []).length > 0 ? (
+                        launchChecklist.nextTask?.callbackUrls.map((url) => (
+                          <code key={url} className="rounded bg-muted px-2 py-1 text-xs text-foreground">{url}</code>
+                        ))
+                      ) : (
+                        <span>配置 LIJI_PUBLIC_APP_URL 后自动生成 provider 回调地址。</span>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="mb-2 text-sm font-medium">验收命令</div>
+                    <div className="flex flex-wrap gap-1">
+                      {(launchChecklist.nextTask?.commands ?? ["npm run prod:check"]).slice(0, 4).map((command) => (
+                        <Badge key={command} variant="outline">{command}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <EmptyLine title="待运行生产检查" detail="点击生产检查后生成上线任务包。" />
+              )}
             </CardContent>
           </Card>
 
@@ -2823,11 +4334,15 @@ function PrivacySection({
 function RightRail(props: {
   urgentEvents: CalendarEvent[];
   logs: NotificationLog[];
-  pendingCount: number;
+  pendingCaptures: CaptureItem[];
   onNavigate: (section: SectionId) => void;
   onConfirmEvent: (eventId: string) => void;
   onConfirmLog: (logId: string) => void;
+  onConfirmMany: (captures: CaptureItem[]) => void;
 }) {
+  const highConfidenceCaptures = props.pendingCaptures.filter((capture) => capture.parsed.confidence >= 0.75);
+  const lowConfidenceCaptures = props.pendingCaptures.filter((capture) => capture.parsed.confidence < 0.65);
+
   return (
     <div className="flex flex-col gap-4">
       <div>
@@ -2866,13 +4381,30 @@ function RightRail(props: {
       <Card size="sm">
         <CardHeader>
           <CardTitle>采集收件箱</CardTitle>
-          <CardDescription>{props.pendingCount} 项待确认</CardDescription>
+          <CardDescription>{props.pendingCaptures.length} 项待确认</CardDescription>
         </CardHeader>
         <CardContent>
-          <Button className="w-full" variant="outline" onClick={() => props.onNavigate("dashboard")}>
-            <ClipboardCheckIcon data-icon="inline-start" />
-            打开确认中心
-          </Button>
+          <div className="flex flex-col gap-2">
+            <Button
+              className="w-full"
+              variant="outline"
+              aria-label={`护航确认高置信采集 ${highConfidenceCaptures.length}`}
+              disabled={highConfidenceCaptures.length === 0}
+              onClick={() => props.onConfirmMany(highConfidenceCaptures)}
+            >
+              <CheckIcon data-icon="inline-start" />
+              确认高置信 {highConfidenceCaptures.length}
+            </Button>
+            <Button className="w-full" variant="ghost" onClick={() => props.onNavigate("dashboard")}>
+              <ClipboardCheckIcon data-icon="inline-start" />
+              打开确认中心
+            </Button>
+            {lowConfidenceCaptures.length > 0 ? (
+              <div className="text-xs leading-5 text-muted-foreground">
+                {lowConfidenceCaptures.length} 项低置信采集需编辑后确认。
+              </div>
+            ) : null}
+          </div>
         </CardContent>
       </Card>
 
@@ -2984,16 +4516,20 @@ function ContactList({
 
 function PlanCard({
   plan,
+  contact,
   linksEnabled,
   onConfirm,
   onBookmark,
 }: {
   plan: FulfillmentPlan;
+  contact?: Contact;
   linksEnabled: boolean;
   onConfirm: (planId: string) => void;
   onBookmark: (planId: string) => void;
 }) {
   const trackedLinks = linksEnabled ? buildPlanFulfillmentLinks(plan) : [];
+  const conciergePack = buildFulfillmentConciergePack(plan, contact);
+  const travelBrief = buildTravelReadinessBrief(plan);
 
   function recordFulfillmentClick(itemId: string, link: ReturnType<typeof buildPlanFulfillmentLinks>[number] | undefined) {
     if (!link) {
@@ -3068,6 +4604,78 @@ function PlanCard({
               })()}
             </div>
           ))}
+          <div className="rounded-lg border p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="font-medium">{conciergePack.title}</div>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">{conciergePack.primaryCopy}</p>
+              </div>
+              <Badge variant="outline">
+                {conciergePack.tone === "business_reserved" ? "克制商务" : conciergePack.tone === "travel_brief" ? "行前简报" : "温暖亲密"}
+              </Badge>
+            </div>
+            {conciergePack.secondaryCopy && (
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">{conciergePack.secondaryCopy}</p>
+            )}
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div>
+                <div className="text-xs font-medium text-muted-foreground">包装/交付选项</div>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {conciergePack.packagingOptions.map((option) => (
+                    <Badge key={option} variant="secondary">{option}</Badge>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs font-medium text-muted-foreground">确认清单</div>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {conciergePack.handoffChecklist.map((item) => (
+                    <Badge key={item} variant="outline">{item}</Badge>
+                  ))}
+                </div>
+              </div>
+            </div>
+            {conciergePack.riskNotes.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-1">
+                {conciergePack.riskNotes.map((note) => (
+                  <Badge key={note} variant="destructive">{note}</Badge>
+                ))}
+              </div>
+            )}
+          </div>
+          {travelBrief && (
+            <div className="rounded-lg border p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="font-medium">{travelBrief.title}</div>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{travelBrief.routeSummary}</p>
+                </div>
+                <Badge variant={travelBrief.readinessScore >= 80 ? "secondary" : travelBrief.readinessScore >= 60 ? "outline" : "destructive"}>
+                  准备度 {travelBrief.readinessScore}
+                </Badge>
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className="rounded-md bg-muted/50 p-3">
+                  <div className="text-xs font-medium text-muted-foreground">预算与距离</div>
+                  <p className="mt-1 text-sm leading-6">{travelBrief.budgetSummary}</p>
+                  <p className="text-sm leading-6 text-muted-foreground">{travelBrief.proximitySummary}</p>
+                </div>
+                <div className="rounded-md bg-muted/50 p-3">
+                  <div className="text-xs font-medium text-muted-foreground">下一步</div>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {travelBrief.nextActions.map((action) => (
+                      <Badge key={action} variant="outline">{action}</Badge>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-1">
+                {travelBrief.checklist.map((item) => (
+                  <Badge key={item} variant="secondary">{item}</Badge>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </CardContent>
       <CardFooter className="justify-between">

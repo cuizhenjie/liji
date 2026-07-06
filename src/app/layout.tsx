@@ -43,7 +43,16 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <TooltipProvider>
           {children}
-          <Toaster richColors closeButton position="top-center" />
+          <Toaster
+            richColors
+            closeButton
+            position="bottom-center"
+            mobileOffset={{
+              bottom: "calc(4.25rem + env(safe-area-inset-bottom))",
+              left: "0.75rem",
+              right: "0.75rem",
+            }}
+          />
         </TooltipProvider>
       </body>
     </html>
