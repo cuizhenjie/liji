@@ -26,15 +26,13 @@ test("captures and confirms a birthday event", async ({ page }) => {
   await expect(page.getByText("资产明细台账")).toBeVisible();
   await expect(page.getByText("已关联周期账单 房贷")).toBeVisible();
   await expect(page.getByText("手动交易待关联关系、差旅或账单来源")).toBeVisible();
+  await page.getByRole("button", { name: /执行资产明细 履约：李小满5岁生日履约方案/ }).click();
+  await expect(page.getByText("方案已确认", { exact: true })).toBeVisible();
   await expect(page.getByText("任务与确认中心")).toBeVisible();
   await expect(page.getByText("秘书时间线")).toBeVisible();
   await expect(page.getByText("待确认提醒：周明客户宴请").first()).toBeVisible();
   await page.getByRole("button", { name: /确认红线提醒/ }).click();
   await expect(page.getByText("已确认提醒，停止升级")).toBeVisible();
-
-  await expect(page.getByText("李小满5岁生日履约方案待确认")).toBeVisible();
-  await page.getByRole("button", { name: /执行秘书动作 李小满5岁生日履约方案待确认/ }).click();
-  await expect(page.getByText("方案已确认", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: /快捷采集 客户宴请/ }).click();
   await expect(page.getByRole("button", { name: /确认采集 周明客户宴请/ })).toBeVisible();

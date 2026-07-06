@@ -1963,6 +1963,24 @@ function DashboardSection(props: {
     props.onNavigate(task.section);
   }
 
+  function runAssetLedgerAction(entry: DataAssetLedgerEntry) {
+    if (entry.status !== "linked" && entry.id.startsWith("fulfillment:")) {
+      const planId = entry.id.replace("fulfillment:", "");
+      const plan = props.plans.find((item) => item.id === planId);
+      if (plan && plan.status !== "confirmed" && plan.status !== "bookmarked") {
+        props.onConfirmPlan(plan.id);
+        return;
+      }
+    }
+
+    if (entry.status !== "linked" && entry.id.startsWith("memory:")) {
+      props.onCorrectMemory(entry.id.replace("memory:", ""));
+      return;
+    }
+
+    props.onNavigate(entry.section);
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
@@ -2036,7 +2054,7 @@ function DashboardSection(props: {
 
       <DataAssetRemediationCard tasks={remediationTasks} onAction={runRemediationTaskAction} />
 
-      <DataAssetLedgerCard entries={assetLedger} onNavigate={props.onNavigate} />
+      <DataAssetLedgerCard entries={assetLedger} onAction={runAssetLedgerAction} />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <MetricCard
@@ -2302,10 +2320,10 @@ function DataAssetHealthRow({
 
 function DataAssetLedgerCard({
   entries,
-  onNavigate,
+  onAction,
 }: {
   entries: DataAssetLedgerEntry[];
-  onNavigate: (section: SectionId) => void;
+  onAction: (entry: DataAssetLedgerEntry) => void;
 }) {
   const openCount = entries.filter((entry) => entry.status !== "linked").length;
 
@@ -2335,10 +2353,10 @@ function DataAssetLedgerCard({
                 className="mt-3 w-fit"
                 size="sm"
                 variant="outline"
-                aria-label={`查看资产明细 ${entry.title}`}
-                onClick={() => onNavigate(entry.section)}
+                aria-label={`${entry.status === "linked" ? "查看资产明细" : "执行资产明细"} ${entry.title}`}
+                onClick={() => onAction(entry)}
               >
-                <SearchIcon data-icon="inline-start" />
+                {entry.status === "linked" ? <SearchIcon data-icon="inline-start" /> : <CheckIcon data-icon="inline-start" />}
                 {entry.cta}
               </Button>
             </div>
