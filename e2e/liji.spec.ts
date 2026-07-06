@@ -149,8 +149,13 @@ test("executes scenario journey cards", async ({ page }) => {
 test("opens AI continuity recovery actions", async ({ page }) => {
   await expect(page.getByText("AI 连续性")).toBeVisible();
   await expect(page.getByText("云端模型未授权，已切换本地规则解析。")).toBeVisible();
+  await expect(page.getByText("AI 接力状态")).toBeVisible();
+  await expect(page.getByText("PII 脱敏", { exact: true })).toBeVisible();
+  await expect(page.getByText("模型路由", { exact: true })).toBeVisible();
+  await expect(page.getByText("确认入库", { exact: true })).toBeVisible();
+  await expect(page.getByText("记忆纠偏", { exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: /执行AI连续性动作 打开授权中心/ }).click();
+  await page.getByRole("button", { name: /处理AI接力 模型路由/ }).click();
   await expect(page.getByText("隐私与授权中心")).toBeVisible();
   await expect(page.getByText("公网模型调用")).toBeVisible();
 });

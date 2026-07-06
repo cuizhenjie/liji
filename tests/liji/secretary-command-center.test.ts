@@ -135,9 +135,17 @@ describe("secretary command center", () => {
     });
 
     expect(continuity.mode).toBe("local_guarded");
-    expect(continuity.status).toBe("attention");
+    expect(continuity.status).toBe("blocked");
     expect(continuity.safeguards).toContain("本地规则兜底解析");
     expect(continuity.interruptionRisks.join(" ")).toContain("云端模型未授权");
+    expect(continuity.stages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "privacy_masking", status: "healthy" }),
+        expect.objectContaining({ id: "model_router", status: "attention", actionId: "privacy_authorization" }),
+        expect.objectContaining({ id: "confirmation_gate", status: "attention", actionId: "confirm_queue" }),
+        expect.objectContaining({ id: "memory_review", status: "blocked", actionId: "memory_review" }),
+      ])
+    );
     expect(continuity.actions).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: "privacy_authorization", section: "privacy" }),

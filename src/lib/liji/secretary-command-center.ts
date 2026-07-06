@@ -40,12 +40,21 @@ export type AiContinuityAction = {
   section: AssistantAction["section"];
 };
 
+export type AiContinuityStage = {
+  id: "privacy_masking" | "model_router" | "confirmation_gate" | "memory_review";
+  label: string;
+  status: AssetHealthStatus;
+  detail: string;
+  actionId?: AiContinuityAction["id"];
+};
+
 export type AiContinuityReport = {
   mode: "cloud_assisted" | "local_guarded";
   status: AssetHealthStatus;
   safeguards: string[];
   interruptionRisks: string[];
   actions: AiContinuityAction[];
+  stages: AiContinuityStage[];
 };
 
 export type ScenarioJourney = {
@@ -275,6 +284,7 @@ export function buildDataAssetReport(data: WorkspaceData): DataAssetReport {
 export function buildAiContinuityReport(data: WorkspaceData): AiContinuityReport {
   const pendingCaptures = data.captures.filter((capture) => capture.status === "pending");
   const memoriesNeedingReview = reviewRequiredMemories(data);
+  const staleMemories = memoriesNeedingReview.filter((memory) => memory.reviewStatus === "stale");
   const risks = [
     data.privacy.cloudModelEnabled ? "" : "云端模型未授权，已切换本地规则解析。",
     pendingCaptures.length > 3
@@ -311,9 +321,44 @@ export function buildAiContinuityReport(data: WorkspaceData): AiContinuityReport
     });
   }
 
+  const stages: AiContinuityStage[] = [
+    {
+      id: "privacy_masking",
+      label: "PII 脱敏",
+      status: data.privacy.piiMasking ? "healthy" : "blocked",
+      detail: data.privacy.piiMasking ? "模型调用前自动脱敏。" : "未开启脱敏，禁止外发给云端模型。",
+      actionId: data.privacy.piiMasking ? undefined : "privacy_authorization",
+    },
+    {
+      id: "model_router",
+      label: "模型路由",
+      status: data.privacy.cloudModelEnabled ? "healthy" : "attention",
+      detail: data.privacy.cloudModelEnabled ? "云端结构化解析可用，本地规则兜底。" : "云端关闭，本地规则解析接管。",
+      actionId: data.privacy.cloudModelEnabled ? undefined : "privacy_authorization",
+    },
+    {
+      id: "confirmation_gate",
+      label: "确认入库",
+      status: pendingCaptures.length > 6 ? "blocked" : pendingCaptures.length > 0 ? "attention" : "healthy",
+      detail: pendingCaptures.length > 0 ? `${pendingCaptures.length} 条采集等待用户确认。` : "采集均已确认或归档。",
+      actionId: pendingCaptures.length > 0 ? "confirm_queue" : undefined,
+    },
+    {
+      id: "memory_review",
+      label: "记忆纠偏",
+      status: staleMemories.length > 0 ? "blocked" : memoriesNeedingReview.length > 0 ? "attention" : "healthy",
+      detail: memoriesNeedingReview.length > 0 ? `${memoriesNeedingReview.length} 条 AI 记忆需要复核。` : "AI 记忆无待复核项。",
+      actionId: memoriesNeedingReview.length > 0 ? "memory_review" : undefined,
+    },
+  ];
+
   return {
     mode: data.privacy.cloudModelEnabled ? "cloud_assisted" : "local_guarded",
-    status: risks.length >= 2 ? "attention" : "healthy",
+    status: stages.some((stage) => stage.status === "blocked")
+      ? "blocked"
+      : risks.length >= 2 || stages.some((stage) => stage.status === "attention")
+        ? "attention"
+        : "healthy",
     safeguards: [
       "PII 脱敏后调用模型",
       "本地规则兜底解析",
@@ -322,6 +367,7 @@ export function buildAiContinuityReport(data: WorkspaceData): AiContinuityReport
     ],
     interruptionRisks: risks,
     actions,
+    stages,
   };
 }
 

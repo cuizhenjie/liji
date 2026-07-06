@@ -2931,6 +2931,8 @@ function AiContinuityCard({
   report: AiContinuityReport;
   onAction: (section: SectionId) => void;
 }) {
+  const actionsById = new Map(report.actions.map((action) => [action.id, action]));
+
   return (
     <Card>
       <CardHeader>
@@ -2987,6 +2989,41 @@ function AiContinuityCard({
             ) : (
               <div className="text-sm text-muted-foreground">当前链路稳定。</div>
             )}
+          </div>
+        </div>
+        <div className="mt-3 rounded-md border p-3">
+          <div className="mb-2 flex items-center gap-2 font-medium">
+            <SparklesIcon className="size-4 text-primary" />
+            AI 接力状态
+          </div>
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
+            {report.stages.map((stage) => {
+              const action = stage.actionId ? actionsById.get(stage.actionId) : undefined;
+
+              return (
+                <div key={stage.id} className="flex min-h-28 flex-col justify-between rounded-md border p-3">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={assetStatusVariant(stage.status)}>{assetStatusText(stage.status)}</Badge>
+                      <span className="font-medium">{stage.label}</span>
+                    </div>
+                    <p className="mt-2 text-sm leading-5 text-muted-foreground">{stage.detail}</p>
+                  </div>
+                  {action ? (
+                    <Button
+                      className="mt-3 w-fit"
+                      size="sm"
+                      variant="outline"
+                      aria-label={`处理AI接力 ${stage.label}`}
+                      onClick={() => onAction(action.section)}
+                    >
+                      <CheckIcon data-icon="inline-start" />
+                      {action.label}
+                    </Button>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         </div>
       </CardContent>
