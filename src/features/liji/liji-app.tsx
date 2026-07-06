@@ -1710,10 +1710,11 @@ export function LijiApp({ initialData }: LijiAppProps) {
               <RightRail
                 urgentEvents={urgentEvents}
                 logs={data.notificationLogs}
-                pendingCount={pendingCaptures.length}
+                pendingCaptures={pendingCaptures}
                 onNavigate={setActiveSection}
                 onConfirmEvent={confirmEventRead}
                 onConfirmLog={confirmLogRead}
+                onConfirmMany={confirmCaptures}
               />
             </aside>
           </div>
@@ -4147,11 +4148,15 @@ function PrivacySection({
 function RightRail(props: {
   urgentEvents: CalendarEvent[];
   logs: NotificationLog[];
-  pendingCount: number;
+  pendingCaptures: CaptureItem[];
   onNavigate: (section: SectionId) => void;
   onConfirmEvent: (eventId: string) => void;
   onConfirmLog: (logId: string) => void;
+  onConfirmMany: (captures: CaptureItem[]) => void;
 }) {
+  const highConfidenceCaptures = props.pendingCaptures.filter((capture) => capture.parsed.confidence >= 0.75);
+  const lowConfidenceCaptures = props.pendingCaptures.filter((capture) => capture.parsed.confidence < 0.65);
+
   return (
     <div className="flex flex-col gap-4">
       <div>
@@ -4190,13 +4195,30 @@ function RightRail(props: {
       <Card size="sm">
         <CardHeader>
           <CardTitle>采集收件箱</CardTitle>
-          <CardDescription>{props.pendingCount} 项待确认</CardDescription>
+          <CardDescription>{props.pendingCaptures.length} 项待确认</CardDescription>
         </CardHeader>
         <CardContent>
-          <Button className="w-full" variant="outline" onClick={() => props.onNavigate("dashboard")}>
-            <ClipboardCheckIcon data-icon="inline-start" />
-            打开确认中心
-          </Button>
+          <div className="flex flex-col gap-2">
+            <Button
+              className="w-full"
+              variant="outline"
+              aria-label={`护航确认高置信采集 ${highConfidenceCaptures.length}`}
+              disabled={highConfidenceCaptures.length === 0}
+              onClick={() => props.onConfirmMany(highConfidenceCaptures)}
+            >
+              <CheckIcon data-icon="inline-start" />
+              确认高置信 {highConfidenceCaptures.length}
+            </Button>
+            <Button className="w-full" variant="ghost" onClick={() => props.onNavigate("dashboard")}>
+              <ClipboardCheckIcon data-icon="inline-start" />
+              打开确认中心
+            </Button>
+            {lowConfidenceCaptures.length > 0 ? (
+              <div className="text-xs leading-5 text-muted-foreground">
+                {lowConfidenceCaptures.length} 项低置信采集需编辑后确认。
+              </div>
+            ) : null}
+          </div>
         </CardContent>
       </Card>
 

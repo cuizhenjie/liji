@@ -81,6 +81,15 @@ test("executes pending secretary timeline actions", async ({ page }) => {
   await expect(page.getByRole("button", { name: /执行时间线动作 待确认投递：周明客户宴请/ })).toHaveCount(0);
 });
 
+test("confirms high confidence captures from the guard rail", async ({ page }) => {
+  await page.getByRole("button", { name: /快捷采集 客户宴请/ }).click();
+  await expect(page.getByRole("button", { name: /护航确认高置信采集 1/ })).toBeVisible();
+
+  await page.getByRole("button", { name: /护航确认高置信采集 1/ }).click();
+  await expect(page.getByText("已批量确认 1 项")).toBeVisible();
+  await expect(page.getByRole("button", { name: /护航确认高置信采集 0/ })).toBeDisabled();
+});
+
 test("opens fulfillment and generates a travel plan", async ({ page }) => {
   await page.getByRole("button", { name: "履约", exact: true }).click();
   await page.getByRole("button", { name: /生成旅行方案/ }).click();
