@@ -114,6 +114,7 @@ import { buildFulfillmentConciergePack } from "@/lib/liji/fulfillment-concierge"
 import type { FulfillmentReconciliationDiscrepancy } from "@/lib/liji/fulfillment-reconciliation";
 import { createUuid } from "@/lib/liji/ids";
 import type { IntegrationStatus } from "@/lib/liji/integrations";
+import { buildNextMonthReservePlan, type NextMonthReservePlan } from "@/lib/liji/insights";
 import {
   buildLevelTwoRecommendationCards,
   type LevelTwoRecommendationCard,
@@ -421,6 +422,18 @@ function featureAcceptanceStatusVariant(status: FeatureAcceptanceItem["status"])
   if (status === "accepted") return "secondary" as const;
   if (status === "blocked") return "destructive" as const;
   return "outline" as const;
+}
+
+function reservePressureText(level: NextMonthReservePlan["pressureLevel"]) {
+  if (level === "high") return "高压力";
+  if (level === "medium") return "需预留";
+  return "健康";
+}
+
+function reservePressureVariant(level: NextMonthReservePlan["pressureLevel"]) {
+  if (level === "high") return "destructive" as const;
+  if (level === "medium") return "outline" as const;
+  return "secondary" as const;
 }
 
 function memoryReviewText(memory: AiMemory) {
@@ -2807,6 +2820,7 @@ function FinanceSection({
   const [smsImportText, setSmsImportText] = useState("【招商银行】您尾号8621账户房贷扣款12800元，交易时间2026-07-02。");
   const [voiceLedgerText, setVoiceLedgerText] = useState("今天吃饭花了125元");
   const [voicePressed, setVoicePressed] = useState(false);
+  const reservePlan = buildNextMonthReservePlan(data);
 
   function submitBill() {
     const amountCny = Number(billAmount);
@@ -3060,6 +3074,37 @@ function FinanceSection({
                 {risk}
               </div>
             ))}
+          </div>
+          <Separator className="my-4" />
+          <div>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="font-medium">下月预留预算方案</div>
+                <div className="mt-1 text-sm text-muted-foreground">
+                  {reservePlan.period} 建议预留 {formatCny(reservePlan.totalReserveCny)}
+                </div>
+              </div>
+              <Badge variant={reservePressureVariant(reservePlan.pressureLevel)}>
+                {reservePressureText(reservePlan.pressureLevel)}
+              </Badge>
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {reservePlan.items.map((item) => (
+                <div key={item.id} className="rounded-lg border p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-medium">{item.label}</div>
+                    <div className="font-semibold">{formatCny(item.amountCny)}</div>
+                  </div>
+                  <Progress className="mt-2" value={Math.round((item.amountCny / Math.max(1, reservePlan.totalReserveCny)) * 100)}>
+                    <ProgressLabel>{item.category}</ProgressLabel>
+                    <span className="ml-auto text-xs text-muted-foreground">
+                      {Math.round((item.amountCny / Math.max(1, reservePlan.totalReserveCny)) * 100)}%
+                    </span>
+                  </Progress>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.rationale}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </CardContent>
       </Card>

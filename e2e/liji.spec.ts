@@ -80,6 +80,8 @@ test("adds bills and manual transactions from finance", async ({ page }) => {
   await page.getByRole("button", { name: "账单", exact: true }).click();
 
   await expect(page.getByText("语音轻量记账")).toBeVisible();
+  await expect(page.getByText("下月预留预算方案")).toBeVisible();
+  await expect(page.getByText("固定账单预留")).toBeVisible();
   await page.getByLabel("语音记账内容").fill("今天吃饭花了125元");
   await page.getByRole("button", { name: /长按语音记账/ }).click();
   await expect(page.getByRole("button", { name: /确认采集 餐饮消费/ })).toBeVisible();

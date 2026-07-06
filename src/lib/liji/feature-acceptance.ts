@@ -1,4 +1,5 @@
 import { buildFulfillmentConciergePack } from "./fulfillment-concierge";
+import { buildNextMonthReservePlan } from "./insights";
 import type { LevelTwoRecommendationCard } from "./level2-recommendations";
 import type { Contact, WorkspaceData } from "./types";
 
@@ -338,6 +339,7 @@ function f401Bills(data: WorkspaceData): FeatureAcceptanceItem {
 
 function f402Insights(data: WorkspaceData): FeatureAcceptanceItem {
   const categories = new Set<string>(data.transactions.map((transaction) => transaction.category));
+  const reservePlan = buildNextMonthReservePlan(data);
   const checks: FeatureAcceptanceCheck[] = [
     {
       id: "summary",
@@ -363,6 +365,12 @@ function f402Insights(data: WorkspaceData): FeatureAcceptanceItem {
       label: "计算财务压力指数",
       passed: data.insight.pressureIndex > 0,
       detail: `压力指数 ${data.insight.pressureIndex}`,
+    },
+    {
+      id: "reserve",
+      label: "生成下月预留预算方案",
+      passed: reservePlan.items.length >= 3 && reservePlan.totalReserveCny > 0,
+      detail: `${reservePlan.period} · ${reservePlan.items.length} 项 · ${reservePlan.totalReserveCny} 元`,
     },
   ];
 
