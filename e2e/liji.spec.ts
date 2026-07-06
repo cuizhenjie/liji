@@ -79,6 +79,14 @@ test("acknowledges level one reminders from the right rail", async ({ page }) =>
 test("adds bills and manual transactions from finance", async ({ page }) => {
   await page.getByRole("button", { name: "账单", exact: true }).click();
 
+  await expect(page.getByText("语音轻量记账")).toBeVisible();
+  await page.getByLabel("语音记账内容").fill("今天吃饭花了125元");
+  await page.getByRole("button", { name: /长按语音记账/ }).click();
+  await expect(page.getByRole("button", { name: /确认采集 餐饮消费/ })).toBeVisible();
+  await page.getByRole("button", { name: /确认采集 餐饮消费/ }).click();
+  await expect(page.getByText("已确认并写入工作区")).toBeVisible();
+  await page.getByRole("button", { name: "账单", exact: true }).click();
+
   await page.getByLabel("账单名称").fill("物业费");
   await page.getByLabel("账单金额").fill("680");
   await page.getByLabel("账单扣款日").fill("15");

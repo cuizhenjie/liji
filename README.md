@@ -80,6 +80,7 @@ npx playwright install chromium webkit
 - P2 商业化闭环：`/api/billing/ledger` 生成权益扣减流水，`/api/billing/checkout` 生成订阅 checkout intent，`/api/billing/invoices` 生成发票申请队列。
 - CPS 财务审批：`/api/finance/cps-approvals` 将履约对账风险转成佣金审批、补证据和付款批次。
 - 运营告警处置：`/api/ops/alerts` 汇总生产、dry-run、权益、履约差异告警，支持确认、解决和重新打开的处置状态。
+- 语音轻量记账：账单页提供“长按语音记账”入口，口述消费会进入确认中心，确认后写入日常流水和月度复盘。
 
 ## 下一批待接真实服务
 

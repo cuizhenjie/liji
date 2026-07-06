@@ -38,4 +38,19 @@ describe("natural language parser", () => {
     expect(capture.parsed.reminderLevel).toBe("level_1");
     expect(capture.sourceType).toBe("chat");
   });
+
+  it("parses voice ledger input into a daily transaction capture", () => {
+    const capture = parseNaturalLanguageInput(
+      "今天吃饭花了125元",
+      demoContacts,
+      undefined,
+      "voice"
+    );
+
+    expect(capture.sourceType).toBe("voice");
+    expect(capture.parsed.intent).toBe("transaction");
+    expect(capture.parsed.title).toBe("餐饮消费");
+    expect(capture.parsed.amountCny).toBe(125);
+    expect(capture.parsed.notes).toContain("记账流水");
+  });
 });

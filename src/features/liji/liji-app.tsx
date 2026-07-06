@@ -1582,6 +1582,9 @@ export function LijiApp({ initialData }: LijiAppProps) {
                   onAddTransaction={addFinanceTransaction}
                   onUpdateBudget={updateBudgetLimit}
                   onSmsCaptures={addSmsCaptures}
+                  onVoiceLedger={(text) => {
+                    void parseCaptureToInbox({ text, source: "voice", clearDraft: false });
+                  }}
                 />
               )}
               {activeSection === "ops" && (
@@ -2785,12 +2788,14 @@ function FinanceSection({
   onAddTransaction,
   onUpdateBudget,
   onSmsCaptures,
+  onVoiceLedger,
 }: {
   data: WorkspaceData;
   onAddBill: (input: { title: string; amountCny: number; dueDay: number; accountLabel: string }) => void;
   onAddTransaction: (input: { title: string; amountCny: number; category: Transaction["category"] }) => void;
   onUpdateBudget: (budgetId: string, totalCny: number) => void;
   onSmsCaptures: (captures: CaptureItem[]) => void;
+  onVoiceLedger: (text: string) => void;
 }) {
   const [billTitle, setBillTitle] = useState("物业/水电");
   const [billAmount, setBillAmount] = useState("680");
@@ -2800,6 +2805,8 @@ function FinanceSection({
   const [transactionAmount, setTransactionAmount] = useState("268");
   const [transactionCategory, setTransactionCategory] = useState<Transaction["category"]>("relationship");
   const [smsImportText, setSmsImportText] = useState("【招商银行】您尾号8621账户房贷扣款12800元，交易时间2026-07-02。");
+  const [voiceLedgerText, setVoiceLedgerText] = useState("今天吃饭花了125元");
+  const [voicePressed, setVoicePressed] = useState(false);
 
   function submitBill() {
     const amountCny = Number(billAmount);
@@ -2854,8 +2861,62 @@ function FinanceSection({
     onSmsCaptures(payload.captures);
   }
 
+  function submitVoiceLedger() {
+    if (!voiceLedgerText.trim()) {
+      toast.error("请说出或输入记账内容");
+      return;
+    }
+
+    setVoicePressed(false);
+    onVoiceLedger(voiceLedgerText);
+  }
+
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      <Card>
+        <CardHeader>
+          <CardTitle>语音轻量记账</CardTitle>
+          <CardDescription>长按说一句，AI 先解析到确认中心，再写入日常流水。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <FieldGroup>
+            <Field>
+              <FieldLabel>口述内容</FieldLabel>
+              <Textarea
+                aria-label="语音记账内容"
+                value={voiceLedgerText}
+                onChange={(event) => setVoiceLedgerText(event.target.value)}
+                rows={3}
+              />
+              <FieldDescription>示例：今天吃饭花了125元、打车花了68元、买咖啡29元。</FieldDescription>
+            </Field>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+              {["今天吃饭花了125元", "打车去客户公司花了68元", "买咖啡29元"].map((sample) => (
+                <Button
+                  key={sample}
+                  size="sm"
+                  variant="outline"
+                  aria-label={`语音记账示例 ${sample}`}
+                  onClick={() => setVoiceLedgerText(sample)}
+                >
+                  {sample}
+                </Button>
+              ))}
+            </div>
+            <Button
+              onClick={submitVoiceLedger}
+              onPointerDown={() => setVoicePressed(true)}
+              onPointerCancel={() => setVoicePressed(false)}
+              onPointerLeave={() => setVoicePressed(false)}
+              aria-label="长按语音记账"
+            >
+              <NotebookPenIcon data-icon="inline-start" />
+              {voicePressed ? "松开发送到确认中心" : "长按语音记账"}
+            </Button>
+          </FieldGroup>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>短信账单导入</CardTitle>

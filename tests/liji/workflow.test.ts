@@ -53,6 +53,19 @@ describe("business workflow", () => {
     expect(confirmedPlan.plans[0].status).toBe("confirmed");
   });
 
+  it("confirms voice ledger captures into daily transactions", () => {
+    const capture = parseNaturalLanguageInput("今天吃饭花了125元", demoContacts, undefined, "voice");
+    const confirmed = applyConfirmedCapture({ ...demoWorkspace, captures: [capture] }, capture);
+
+    expect(confirmed.captures[0].status).toBe("confirmed");
+    expect(confirmed.transactions[0]).toMatchObject({
+      title: "餐饮消费",
+      amountCny: 125,
+      category: "daily",
+      source: "ai",
+    });
+  });
+
   it("batch confirms high-confidence captures and archives low-confidence captures", () => {
     const birthday = parseNaturalLanguageInput("下周五是女儿5岁生日，预算2000元", demoContacts);
     const bill = parseNaturalLanguageInput("明天房贷扣款12800元", demoContacts);
