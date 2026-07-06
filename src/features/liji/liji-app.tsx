@@ -133,6 +133,10 @@ import {
   type ProductionLaunchTask,
 } from "@/lib/liji/production-launch";
 import {
+  buildScenarioAcceptance,
+  type ScenarioAcceptanceItem,
+} from "@/lib/liji/scenario-acceptance";
+import {
   buildSecretaryCommandCenter,
   type AiContinuityReport,
   type AssistantAction,
@@ -385,6 +389,18 @@ function launchTaskStatusText(status: ProductionLaunchTask["status"]) {
 }
 
 function launchTaskStatusVariant(status: ProductionLaunchTask["status"]) {
+  if (status === "ready") return "secondary" as const;
+  if (status === "blocked") return "destructive" as const;
+  return "outline" as const;
+}
+
+function scenarioAcceptanceStatusText(status: ScenarioAcceptanceItem["status"]) {
+  if (status === "ready") return "已闭环";
+  if (status === "blocked") return "有阻塞";
+  return "待推进";
+}
+
+function scenarioAcceptanceStatusVariant(status: ScenarioAcceptanceItem["status"]) {
   if (status === "ready") return "secondary" as const;
   if (status === "blocked") return "destructive" as const;
   return "outline" as const;
@@ -1682,6 +1698,10 @@ function DashboardSection(props: {
     data: scopedData,
     levelTwoCards: props.levelTwoCards,
   });
+  const scenarioAcceptance = buildScenarioAcceptance({
+    data: scopedData,
+    levelTwoCards: props.levelTwoCards,
+  });
   const remediationTasks = buildDataAssetRemediationTasks(scopedData, 6);
   const timeline = buildSecretaryTimeline(data, 8);
   const highConfidenceCaptures = pendingCaptures.filter((capture) => capture.parsed.confidence >= 0.75);
@@ -1771,6 +1791,8 @@ function DashboardSection(props: {
         <AiContinuityCard report={commandCenter.aiContinuity} />
         <ScenarioJourneyCard journeys={commandCenter.journeys} onNavigate={props.onNavigate} />
       </div>
+
+      <ScenarioAcceptanceCard scenarios={scenarioAcceptance} onNavigate={props.onNavigate} />
 
       <DataAssetRemediationCard tasks={remediationTasks} onNavigate={props.onNavigate} />
 
@@ -2047,6 +2069,58 @@ function DataAssetRemediationCard({
             ))}
           </div>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ScenarioAcceptanceCard({
+  scenarios,
+  onNavigate,
+}: {
+  scenarios: ScenarioAcceptanceItem[];
+  onNavigate: (section: SectionId) => void;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>场景验收作战室</CardTitle>
+        <CardDescription>按生日、宴请、差旅、账单四条主线检查闭环卡点。</CardDescription>
+        <CardAction>
+          <Badge variant={scenarios.some((item) => item.status === "blocked") ? "destructive" : "secondary"}>
+            {scenarios.filter((item) => item.status !== "ready").length} 个待推进
+          </Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+          {scenarios.map((scenario) => (
+            <div key={scenario.id} className="rounded-lg border p-3">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="font-medium">{scenario.label}</div>
+                <Badge variant={scenarioAcceptanceStatusVariant(scenario.status)}>
+                  {scenarioAcceptanceStatusText(scenario.status)}
+                </Badge>
+              </div>
+              <Progress value={scenario.progress}>
+                <ProgressLabel>{scenario.progress}%</ProgressLabel>
+                <span className="ml-auto text-xs text-muted-foreground">{scenario.nextStep}</span>
+              </Progress>
+              <p className="mt-2 line-clamp-2 text-sm leading-6 text-muted-foreground">{scenario.currentStep}</p>
+              <div className="mt-3 flex flex-wrap gap-1">
+                {scenario.checks.map((check) => (
+                  <Badge key={check.id} variant={check.passed ? "secondary" : check.critical ? "destructive" : "outline"}>
+                    {check.passed ? "✓" : "!"} {check.label}
+                  </Badge>
+                ))}
+              </div>
+              <Button className="mt-3" size="sm" variant="outline" onClick={() => onNavigate(scenario.section)}>
+                <ListChecksIcon data-icon="inline-start" />
+                {scenario.cta}
+              </Button>
+            </div>
+          ))}
+        </div>
       </CardContent>
     </Card>
   );
