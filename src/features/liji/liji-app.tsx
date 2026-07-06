@@ -160,6 +160,11 @@ import {
   type ScenarioAcceptanceItem,
 } from "@/lib/liji/scenario-acceptance";
 import {
+  buildScenarioPlaybooks,
+  type ScenarioPlaybook,
+  type ScenarioPlaybookStep,
+} from "@/lib/liji/scenario-playbook";
+import {
   buildSecretaryCommandCenter,
   type AiContinuityReport,
   type AssistantAction,
@@ -470,6 +475,18 @@ function scenarioAcceptanceStatusText(status: ScenarioAcceptanceItem["status"]) 
 function scenarioAcceptanceStatusVariant(status: ScenarioAcceptanceItem["status"]) {
   if (status === "ready") return "secondary" as const;
   if (status === "blocked") return "destructive" as const;
+  return "outline" as const;
+}
+
+function scenarioPlaybookStepStatusText(status: ScenarioPlaybookStep["status"]) {
+  if (status === "done") return "完成";
+  if (status === "current") return "当前";
+  return "后续";
+}
+
+function scenarioPlaybookStepStatusVariant(status: ScenarioPlaybookStep["status"]) {
+  if (status === "done") return "secondary" as const;
+  if (status === "current") return "outline" as const;
   return "outline" as const;
 }
 
@@ -1851,6 +1868,7 @@ function DashboardSection(props: {
     data: scopedData,
     levelTwoCards: props.levelTwoCards,
   });
+  const scenarioPlaybooks = buildScenarioPlaybooks(scenarioAcceptance);
   const featureAcceptance = buildFeatureAcceptanceMatrix({
     data: scopedData,
     levelTwoCards: props.levelTwoCards,
@@ -2066,6 +2084,16 @@ function DashboardSection(props: {
     }
 
     props.onNavigate(scenario.section);
+  }
+
+  function runScenarioPlaybookAction(playbook: ScenarioPlaybook) {
+    const scenario = scenarioAcceptance.find((item) => item.id === playbook.id);
+    if (scenario) {
+      runScenarioAcceptanceAction(scenario);
+      return;
+    }
+
+    props.onNavigate(playbook.section);
   }
 
   function runFeatureAcceptanceAction(feature: FeatureAcceptanceItem) {
@@ -2348,6 +2376,8 @@ function DashboardSection(props: {
         <AiContinuityCard report={commandCenter.aiContinuity} onAction={(section) => props.onNavigate(section)} />
         <ScenarioJourneyCard journeys={commandCenter.journeys} onAction={runScenarioJourneyAction} />
       </div>
+
+      <ScenarioPlaybookCard playbooks={scenarioPlaybooks} onAction={runScenarioPlaybookAction} />
 
       <ScenarioAcceptanceCard scenarios={scenarioAcceptance} onAction={runScenarioAcceptanceAction} />
 
@@ -2843,6 +2873,75 @@ function DataAssetRemediationCard({
             ))}
           </div>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ScenarioPlaybookCard({
+  playbooks,
+  onAction,
+}: {
+  playbooks: ScenarioPlaybook[];
+  onAction: (playbook: ScenarioPlaybook) => void;
+}) {
+  const openCount = playbooks.filter((playbook) => playbook.status !== "ready").length;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>场景剧本</CardTitle>
+        <CardDescription>把关系、日程、方案、提醒和复盘拆成可执行步骤。</CardDescription>
+        <CardAction>
+          <Badge variant={playbooks.some((playbook) => playbook.status === "blocked") ? "destructive" : openCount > 0 ? "outline" : "secondary"}>
+            {openCount} 条待推进
+          </Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+          {playbooks.map((playbook) => (
+            <div key={playbook.id} className="flex min-h-52 flex-col justify-between rounded-lg border p-3">
+              <div>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div className="font-medium">{playbook.label}</div>
+                  <Badge variant={scenarioAcceptanceStatusVariant(playbook.status)}>
+                    {scenarioAcceptanceStatusText(playbook.status)}
+                  </Badge>
+                </div>
+                <Progress value={playbook.progress}>
+                  <ProgressLabel>{playbook.progress}%</ProgressLabel>
+                  <span className="ml-auto text-xs text-muted-foreground">{playbook.nextStep}</span>
+                </Progress>
+                <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                  {playbook.steps.map((step) => (
+                    <div key={step.id} className="rounded-md border px-3 py-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge
+                          variant={step.status === "current" && step.critical ? "destructive" : scenarioPlaybookStepStatusVariant(step.status)}
+                        >
+                          {scenarioPlaybookStepStatusText(step.status)}
+                        </Badge>
+                        <span className="text-sm font-medium">{step.label}</span>
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{step.detail}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <Button
+                className="mt-3 w-fit"
+                size="sm"
+                variant="outline"
+                aria-label={`执行场景剧本 ${playbook.label}`}
+                onClick={() => onAction(playbook)}
+              >
+                <ListChecksIcon data-icon="inline-start" />
+                {playbook.cta}
+              </Button>
+            </div>
+          ))}
+        </div>
       </CardContent>
     </Card>
   );

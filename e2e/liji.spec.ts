@@ -17,6 +17,7 @@ test("captures and confirms a birthday event", async ({ page }) => {
   await expect(page.getByText("数据资产体检")).toBeVisible();
   await expect(page.getByText("AI 连续性")).toBeVisible();
   await expect(page.getByText("场景流转")).toBeVisible();
+  await expect(page.getByText("场景剧本")).toBeVisible();
   await expect(page.getByText("场景验收作战室")).toBeVisible();
   await expect(page.getByText("功能验收矩阵")).toBeVisible();
   await expect(page.getByText("F202 · 冗余预警机制", { exact: true })).toBeVisible();
@@ -91,6 +92,16 @@ test("runs dashboard scenario and asset remediation actions", async ({ page }) =
 
   await page.getByRole("button", { name: /执行资产补齐 确认履约方案：李小满5岁生日履约方案/ }).click();
   await expect(page.getByText("生日关怀链路已可执行。")).toBeVisible();
+});
+
+test("executes scenario playbook actions", async ({ page }) => {
+  await expect(page.getByText("场景剧本")).toBeVisible();
+  await expect(page.getByText("客户宴请").first()).toBeVisible();
+
+  await page.getByRole("button", { name: /执行场景剧本 客户宴请/ }).click();
+
+  await expect(page.getByText("已确认提醒，停止升级")).toBeVisible();
+  await expect(page.getByText("客户宴请链路已通过红线检查。")).toBeVisible();
 });
 
 test("executes data asset health actions", async ({ page }) => {
