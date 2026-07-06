@@ -152,4 +152,21 @@ describe("secretary command center", () => {
     expect(journeys.find((item) => item.id === "relationship_care")?.progress).toBeGreaterThanOrEqual(75);
     expect(journeys.find((item) => item.id === "travel_fulfillment")?.nextStep).toContain("确认预算");
   });
+
+  it("moves travel journeys forward once the plan is confirmed", () => {
+    const journeys = buildScenarioJourneys({
+      data: {
+        ...demoWorkspace,
+        plans: demoWorkspace.plans.map((plan) =>
+          plan.scenario === "travel" ? { ...plan, status: "confirmed" } : plan
+        ),
+      },
+      levelTwoCards: [],
+    });
+
+    expect(journeys.find((item) => item.id === "travel_fulfillment")).toMatchObject({
+      currentStep: "差旅方案已确认",
+      nextStep: "跟踪行前清单和外部跳转",
+    });
+  });
 });

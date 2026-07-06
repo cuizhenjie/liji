@@ -1884,6 +1884,55 @@ function DashboardSection(props: {
     return plan.status === "confirmed" || plan.status === "bookmarked" ? "查看方案" : "确认方案";
   }
 
+  function runScenarioJourneyAction(journey: ScenarioJourney) {
+    if (journey.id === "relationship_care") {
+      const card = props.levelTwoCards[0];
+      if (card) {
+        runLevelTwoRecommendationAction(card);
+        return;
+      }
+
+      const festivalPlan = props.plans.find((plan) => plan.scenario === "festival");
+      if (festivalPlan && festivalPlan.status !== "confirmed" && festivalPlan.status !== "bookmarked") {
+        props.onConfirmPlan(festivalPlan.id);
+        return;
+      }
+
+      if (!festivalPlan) {
+        props.onBirthdayPlan();
+        return;
+      }
+    }
+
+    if (journey.id === "travel_fulfillment") {
+      const travelPlan = props.plans.find((plan) => plan.scenario === "travel");
+      if (travelPlan && travelPlan.status !== "confirmed" && travelPlan.status !== "bookmarked") {
+        props.onConfirmPlan(travelPlan.id);
+        return;
+      }
+
+      if (!travelPlan) {
+        props.onTravelPlan();
+        return;
+      }
+    }
+
+    if (journey.id === "bill_recap") {
+      const billEvent = props.events.find((event) =>
+        event.source === "bill" &&
+        event.reminderLevel === "level_1" &&
+        event.status !== "confirmed" &&
+        event.status !== "done"
+      );
+      if (billEvent) {
+        props.onConfirmEvent(billEvent.id);
+        return;
+      }
+    }
+
+    props.onNavigate(journey.id === "bill_recap" ? "finance" : "fulfillment");
+  }
+
   function runScenarioAcceptanceAction(scenario: ScenarioAcceptanceItem) {
     if (scenario.id === "birthday_care") {
       const birthdayEvent = props.events.find((event) => /生日|纪念日/.test(event.title));
@@ -2115,7 +2164,7 @@ function DashboardSection(props: {
 
       <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[0.9fr_1.1fr]">
         <AiContinuityCard report={commandCenter.aiContinuity} />
-        <ScenarioJourneyCard journeys={commandCenter.journeys} onNavigate={props.onNavigate} />
+        <ScenarioJourneyCard journeys={commandCenter.journeys} onAction={runScenarioJourneyAction} />
       </div>
 
       <ScenarioAcceptanceCard scenarios={scenarioAcceptance} onAction={runScenarioAcceptanceAction} />
@@ -2722,17 +2771,11 @@ function AiContinuityCard({ report }: { report: AiContinuityReport }) {
 
 function ScenarioJourneyCard({
   journeys,
-  onNavigate,
+  onAction,
 }: {
   journeys: ScenarioJourney[];
-  onNavigate: (section: SectionId) => void;
+  onAction: (journey: ScenarioJourney) => void;
 }) {
-  const sectionByJourney: Record<ScenarioJourney["id"], SectionId> = {
-    relationship_care: "fulfillment",
-    bill_recap: "finance",
-    travel_fulfillment: "fulfillment",
-  };
-
   return (
     <Card>
       <CardHeader>
@@ -2751,8 +2794,14 @@ function ScenarioJourneyCard({
                 <ProgressLabel>{journey.currentStep}</ProgressLabel>
               </Progress>
               <p className="mt-2 min-h-10 text-sm leading-5 text-muted-foreground">{journey.nextStep}</p>
-              <Button className="mt-3" size="sm" variant="outline" onClick={() => onNavigate(sectionByJourney[journey.id])}>
-                <ActivityIcon data-icon="inline-start" />
+              <Button
+                className="mt-3"
+                size="sm"
+                variant="outline"
+                aria-label={`执行场景流转 ${journey.label}`}
+                onClick={() => onAction(journey)}
+              >
+                {journey.status === "healthy" ? <ActivityIcon data-icon="inline-start" /> : <CheckIcon data-icon="inline-start" />}
                 继续推进
               </Button>
             </div>

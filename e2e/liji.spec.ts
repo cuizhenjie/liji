@@ -98,6 +98,17 @@ test("executes level two recommendation cards", async ({ page }) => {
   await expect(page.getByRole("button", { name: /执行Level 2推荐 李小满5岁生日 推荐卡/ })).toHaveText(/查看方案/);
 });
 
+test("executes scenario journey cards", async ({ page }) => {
+  await expect(page.getByText("场景流转")).toBeVisible();
+
+  await page.getByRole("button", { name: /执行场景流转 关系关怀/ }).click();
+  await expect(page.getByText("方案已确认", { exact: true })).toBeVisible();
+  await expect(page.getByText("履约方案已沉淀").first()).toBeVisible();
+
+  await page.getByRole("button", { name: /执行场景流转 差旅履约/ }).click();
+  await expect(page.getByText("差旅方案已确认").first()).toBeVisible();
+});
+
 test("opens fulfillment and generates a travel plan", async ({ page }) => {
   await page.getByRole("button", { name: "履约", exact: true }).click();
   await page.getByRole("button", { name: /生成旅行方案/ }).click();

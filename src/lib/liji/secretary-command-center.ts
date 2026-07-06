@@ -312,7 +312,8 @@ export function buildScenarioJourneys(params: {
   const travelEvents = data.events.filter((event) => event.source === "travel");
   const travelPlans = data.plans.filter((plan) => plan.scenario === "travel");
   const hasTravelQuote = travelPlans.some((plan) => plan.items.some((item) => item.provider === "携程" || item.provider === "同程"));
-  const travelProgress = [travelEvents.length > 0, travelPlans.length > 0, hasTravelQuote, hasNotificationLog]
+  const hasConfirmedTravelPlan = travelPlans.some((plan) => plan.status === "confirmed" || plan.status === "bookmarked");
+  const travelProgress = [travelEvents.length > 0, travelPlans.length > 0, hasTravelQuote, hasConfirmedTravelPlan]
     .filter(Boolean).length * 25;
 
   return [
@@ -337,8 +338,8 @@ export function buildScenarioJourneys(params: {
       label: "差旅履约",
       progress: travelProgress,
       status: journeyStatus(travelProgress),
-      currentStep: travelPlans.length > 0 ? "差旅方案已生成" : "等待差旅采集",
-      nextStep: hasTravelQuote ? "确认预算和外部跳转" : "补充报价和客户地址",
+      currentStep: hasConfirmedTravelPlan ? "差旅方案已确认" : travelPlans.length > 0 ? "差旅方案已生成" : "等待差旅采集",
+      nextStep: hasConfirmedTravelPlan ? "跟踪行前清单和外部跳转" : hasTravelQuote ? "确认预算和外部跳转" : "补充报价和客户地址",
     },
   ];
 }
