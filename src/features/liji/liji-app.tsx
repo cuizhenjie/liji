@@ -255,14 +255,16 @@ const sectionItems: Array<{
   id: SectionId;
   label: string;
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+  headerTitle: string;
+  headerDesc: string;
 }> = [
-  { id: "dashboard", label: "我的看板", icon: HomeIcon },
-  { id: "contacts", label: "人脉", icon: UserRoundIcon },
-  { id: "calendar", label: "日历", icon: CalendarDaysIcon },
-  { id: "fulfillment", label: "履约", icon: GiftIcon },
-  { id: "finance", label: "账单", icon: WalletCardsIcon },
-  { id: "ops", label: "运营", icon: ActivityIcon },
-  { id: "privacy", label: "隐私", icon: LockKeyholeIcon },
+  { id: "dashboard", label: "我的看板", icon: HomeIcon, headerTitle: "我的看板", headerDesc: "额度、关系、提醒与履约一体化总览" },
+  { id: "contacts", label: "人脉", icon: UserRoundIcon, headerTitle: "人脉与关系圈", headerDesc: "家庭、客户、合作伙伴的长期偏好管理" },
+  { id: "calendar", label: "日历", icon: CalendarDaysIcon, headerTitle: "智能动态日历", headerDesc: "阳历优先，支持农历与 RRULE 重复规则" },
+  { id: "fulfillment", label: "履约", icon: GiftIcon, headerTitle: "履约方案中心", headerDesc: "额度拆解后生成可跳转方案" },
+  { id: "finance", label: "账单", icon: WalletCardsIcon, headerTitle: "账单复盘", headerDesc: "固定账单、交易聚合与月度复盘" },
+  { id: "ops", label: "运营", icon: ActivityIcon, headerTitle: "运营处理台", headerDesc: "人工补录、批量复核与告警处置" },
+  { id: "privacy", label: "隐私", icon: LockKeyholeIcon, headerTitle: "隐私与授权", headerDesc: "敏感数据、模型调用和通知通道管理" },
 ];
 
 const identityOptions: Array<{ value: IdentityMode; label: string }> = [
@@ -1518,19 +1520,22 @@ export function LijiApp({ initialData }: LijiAppProps) {
         <aside className="hidden w-[244px] shrink-0 border-r bg-sidebar px-4 py-5 lg:flex lg:flex-col">
           <BrandBlock />
           <nav className="mt-8 flex flex-col gap-1" aria-label="主导航">
-            {sectionItems.map((item) => (
-              <Button
-                key={item.id}
-                variant={activeSection === item.id ? "secondary" : "ghost"}
-                className="justify-start"
-                onClick={() => setActiveSection(item.id)}
-              >
-                <item.icon data-icon="inline-start" />
-                {item.label}
-              </Button>
-            ))}
+            {sectionItems.map((item) => {
+              const isActive = activeSection === item.id;
+              return (
+                <Button
+                  key={item.id}
+                  variant={isActive ? "secondary" : "ghost"}
+                  className={`justify-start transition-all ${isActive ? "bg-primary/10 text-primary font-medium shadow-sm" : ""}`}
+                  onClick={() => setActiveSection(item.id)}
+                >
+                  <item.icon data-icon="inline-start" />
+                  {item.label}
+                </Button>
+              );
+            })}
           </nav>
-          <div className="mt-auto rounded-lg border bg-background p-3">
+          <div className="mt-auto rounded-lg border bg-gradient-to-br from-primary/5 to-primary/10 p-3">
             <div className="flex items-center gap-2 text-sm font-medium">
               <ShieldCheckIcon className="size-4 text-primary" />
               隐私护栏
@@ -1549,8 +1554,8 @@ export function LijiApp({ initialData }: LijiAppProps) {
                   <BrandBlock compact />
                 </div>
                 <div className="hidden lg:block">
-                  <p className="text-sm text-muted-foreground">2026年7月1日 · Asia/Shanghai</p>
-                  <h1 className="text-xl font-semibold tracking-normal">我的看板</h1>
+                  <p className="text-sm text-muted-foreground">{sectionItems.find((s) => s.id === activeSection)?.headerDesc ?? ""}</p>
+                  <h1 className="text-xl font-semibold tracking-normal">{sectionItems.find((s) => s.id === activeSection)?.headerTitle ?? "我的看板"}</h1>
                 </div>
                 <IdentitySwitcher value={activeIdentity} onChange={setActiveIdentity} />
                 <div className="flex items-center gap-2">
@@ -1772,19 +1777,22 @@ export function LijiApp({ initialData }: LijiAppProps) {
         </main>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-7 border-t bg-background lg:hidden">
-        {sectionItems.map((item) => (
-          <button
-            key={item.id}
-            className="flex min-h-14 flex-col items-center justify-center gap-1 text-[11px] text-muted-foreground data-[active=true]:text-primary"
-            data-active={activeSection === item.id}
-            onClick={() => setActiveSection(item.id)}
-            type="button"
-          >
-            <item.icon className="size-4" />
-            {item.label}
-          </button>
-        ))}
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-7 border-t bg-background/95 backdrop-blur-lg lg:hidden">
+        {sectionItems.map((item) => {
+          const isActive = activeSection === item.id;
+          return (
+            <button
+              key={item.id}
+              className={`flex min-h-14 flex-col items-center justify-center gap-1 text-[11px] transition-colors ${isActive ? "text-primary font-medium" : "text-muted-foreground"}`}
+              data-active={isActive}
+              onClick={() => setActiveSection(item.id)}
+              type="button"
+            >
+              <item.icon className={`size-4 ${isActive ? "scale-110 transition-transform" : ""}`} />
+              {item.label}
+            </button>
+          );
+        })}
       </nav>
     </div>
   );
@@ -1793,7 +1801,7 @@ export function LijiApp({ initialData }: LijiAppProps) {
 function BrandBlock({ compact = false }: { compact?: boolean }) {
   return (
     <div className="flex items-center gap-3">
-      <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-base font-semibold text-primary-foreground">
+      <div className="flex size-9 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/80 text-base font-semibold text-primary-foreground shadow-sm">
         礼
       </div>
       {!compact && (
@@ -4511,11 +4519,13 @@ function OpsAction({
   return (
     <button
       type="button"
-      className="flex min-h-28 items-start gap-3 rounded-lg border p-4 text-left transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+      className="flex min-h-28 items-start gap-3 rounded-lg border p-4 text-left transition-all hover:bg-muted/60 hover:border-primary/30 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
       disabled={disabled}
       onClick={onClick}
     >
-      <Icon className="mt-1 size-5 text-primary" />
+      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+        <Icon className="size-4 text-primary" />
+      </div>
       <span>
         <span className="block font-medium">{title}</span>
         <span className="mt-1 block text-sm leading-6 text-muted-foreground">{detail}</span>
@@ -4797,16 +4807,18 @@ function MetricCard(props: {
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
 }) {
   return (
-    <Card>
+    <Card className="relative overflow-hidden">
       <CardHeader>
-        <CardTitle>{props.title}</CardTitle>
+        <CardTitle className="text-sm font-medium text-muted-foreground">{props.title}</CardTitle>
         <CardAction>
-          <props.icon className="size-4 text-primary" />
+          <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10">
+            <props.icon className="size-4 text-primary" />
+          </div>
         </CardAction>
       </CardHeader>
       <CardContent>
-        <div className="text-3xl font-semibold tracking-normal">{props.value}</div>
-        <div className="mt-1 text-sm text-muted-foreground">{props.detail}</div>
+        <div className="text-3xl font-bold tracking-tight">{props.value}</div>
+        <div className="mt-1 text-xs text-muted-foreground">{props.detail}</div>
       </CardContent>
     </Card>
   );
@@ -5053,9 +5065,9 @@ function PlanCard({
 
 function InsightCell({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border p-3">
+    <div className="rounded-lg border bg-gradient-to-br from-muted/50 to-muted/20 p-3">
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-1 text-lg font-semibold">{value}</div>
+      <div className="mt-1 text-lg font-bold tracking-tight">{value}</div>
     </div>
   );
 }
@@ -5074,9 +5086,11 @@ function InsightProgress({ label, value, total }: { label: string; value: number
 
 function EmptyLine({ title, detail }: { title: string; detail: string }) {
   return (
-    <div className="rounded-lg border border-dashed p-6 text-center">
-      <BotIcon className="mx-auto size-6 text-muted-foreground" />
-      <div className="mt-2 font-medium">{title}</div>
+    <div className="rounded-lg border border-dashed bg-muted/20 p-6 text-center">
+      <div className="mx-auto flex size-10 items-center justify-center rounded-full bg-primary/10">
+        <BotIcon className="size-5 text-primary" />
+      </div>
+      <div className="mt-3 font-medium">{title}</div>
       <div className="mt-1 text-sm text-muted-foreground">{detail}</div>
     </div>
   );
