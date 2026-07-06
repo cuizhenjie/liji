@@ -72,7 +72,7 @@ npx playwright install chromium webkit
 - 运营兜底：`/api/notification-retries/run` 支持短信/语音失败后限次重试和耗尽告警，`/api/capture/sla/run` 支持 OCR/ASR 超时 SLA 告警与卡住任务释放。
 - 人工补录与批量记忆：`/api/capture/manual-complete` 可人工补录 OCR/ASR 结果并关闭告警，`/api/ai-memories/batch` 支持批量复核、忽略、删除和重新 embedding 标记。
 - 多身份与 VIP 详情：看板、人脉和日历支持全部/家庭/商务视图切换；VIP 详情展示偏好、合规、关联日程和往期礼物。
-- Level 2 推荐卡片：`/api/recommendations/level2` 与看板会按 15 天窗口生成每日推荐卡片，辅助提前锁定礼物/餐饮/预算。
+- Level 2 推荐卡片：`/api/recommendations/level2` 与看板会按 15 天窗口生成每日推荐卡片，并可直接确认或生成履约方案。
 - 差旅偏好与报价：差旅方案支持出发地、起止日期、交通策略、住宿标准、餐饮标准和客户地址；`/api/travel/quotes` 可接外部报价 provider，未配置时回退内置候选。
 - 行前秘书包：差旅方案会生成准备度、交通住宿摘要、客户地址距离检查、弹性预算和行前确认清单，把差旅规划转成可执行安排。
 - 短信账单导入：`/api/capture/sms-import` 承接原生壳或短信 webhook 传入的账单短信，解析后进入待确认队列。

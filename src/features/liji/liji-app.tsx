@@ -1847,13 +1847,11 @@ function DashboardSection(props: {
 
     if (action.id.startsWith("level2:")) {
       const card = props.levelTwoCards.find((item) => action.id === `level2:${item.id}`);
-      const plan = props.plans.find((item) => item.eventId === card?.eventId);
-      if (plan && plan.status !== "confirmed" && plan.status !== "bookmarked") {
-        props.onConfirmPlan(plan.id);
-        return;
+      if (card) {
+        runLevelTwoRecommendationAction(card);
+      } else {
+        props.onBirthdayPlan();
       }
-
-      props.onBirthdayPlan(card?.eventId);
       return;
     }
 
@@ -1863,6 +1861,27 @@ function DashboardSection(props: {
     }
 
     props.onNavigate(action.section);
+  }
+
+  function runLevelTwoRecommendationAction(card: LevelTwoRecommendationCard) {
+    const plan = props.plans.find((item) => item.eventId === card.eventId);
+    if (plan && plan.status !== "confirmed" && plan.status !== "bookmarked") {
+      props.onConfirmPlan(plan.id);
+      return;
+    }
+
+    if (!plan) {
+      props.onBirthdayPlan(card.eventId);
+      return;
+    }
+
+    props.onNavigate("fulfillment");
+  }
+
+  function levelTwoRecommendationCta(card: LevelTwoRecommendationCard) {
+    const plan = props.plans.find((item) => item.eventId === card.eventId);
+    if (!plan) return "生成方案";
+    return plan.status === "confirmed" || plan.status === "bookmarked" ? "查看方案" : "确认方案";
   }
 
   function runScenarioAcceptanceAction(scenario: ScenarioAcceptanceItem) {
@@ -2299,6 +2318,16 @@ function DashboardSection(props: {
                         <Badge key={action} variant="outline">{action}</Badge>
                       ))}
                     </div>
+                    <Button
+                      className="mt-3 w-fit"
+                      size="sm"
+                      variant="outline"
+                      aria-label={`执行Level 2推荐 ${card.title}`}
+                      onClick={() => runLevelTwoRecommendationAction(card)}
+                    >
+                      <SparklesIcon data-icon="inline-start" />
+                      {levelTwoRecommendationCta(card)}
+                    </Button>
                   </div>
                 ))
               )}

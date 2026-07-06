@@ -90,6 +90,14 @@ test("confirms high confidence captures from the guard rail", async ({ page }) =
   await expect(page.getByRole("button", { name: /护航确认高置信采集 0/ })).toBeDisabled();
 });
 
+test("executes level two recommendation cards", async ({ page }) => {
+  await expect(page.getByText("Level 2 推荐卡片")).toBeVisible();
+
+  await page.getByRole("button", { name: /执行Level 2推荐 李小满5岁生日 推荐卡/ }).click();
+  await expect(page.getByText("方案已确认", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /执行Level 2推荐 李小满5岁生日 推荐卡/ })).toHaveText(/查看方案/);
+});
+
 test("opens fulfillment and generates a travel plan", async ({ page }) => {
   await page.getByRole("button", { name: "履约", exact: true }).click();
   await page.getByRole("button", { name: /生成旅行方案/ }).click();
