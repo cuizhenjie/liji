@@ -9,6 +9,8 @@ test.beforeEach(async ({ page }) => {
 
 test("captures and confirms a birthday event", async ({ page }) => {
   await expect(page.getByLabel("采集收件箱输入")).toBeVisible();
+  await expect(page.getByText("今日秘书简报")).toBeVisible();
+  await expect(page.getByText("秘书分", { exact: true })).toBeVisible();
   await expect(page.getByText("今日秘书工作台")).toBeVisible();
   await expect(page.getByText("验收驾驶舱")).toBeVisible();
   await expect(page.getByText("总体验收分")).toBeVisible();
@@ -54,6 +56,16 @@ test("captures and confirms a birthday event", async ({ page }) => {
   await expect(page.getByText("女儿5岁生日").first()).toBeVisible();
   await page.getByRole("button", { name: /确认采集 女儿5岁生日/ }).click();
   await expect(page.getByText("已确认并写入工作区")).toBeVisible();
+});
+
+test("executes the daily secretary brief primary action", async ({ page }) => {
+  await expect(page.getByText("今日秘书简报")).toBeVisible();
+  await expect(page.getByText("主动作：确认红线事项：周明客户宴请")).toBeVisible();
+
+  await page.getByRole("button", { name: /执行今日秘书简报 确认红线事项：周明客户宴请/ }).click();
+
+  await expect(page.getByText("已确认提醒，停止升级")).toBeVisible();
+  await expect(page.getByText("主动作：").first()).toBeVisible();
 });
 
 test("executes the acceptance cockpit next action", async ({ page }) => {
@@ -148,7 +160,7 @@ test("executes scenario journey cards", async ({ page }) => {
 
 test("opens AI continuity recovery actions", async ({ page }) => {
   await expect(page.getByText("AI 连续性")).toBeVisible();
-  await expect(page.getByText("云端模型未授权，已切换本地规则解析。")).toBeVisible();
+  await expect(page.getByText("云端模型未授权，已切换本地规则解析。", { exact: true })).toBeVisible();
   await expect(page.getByText("AI 接力状态")).toBeVisible();
   await expect(page.getByText("PII 脱敏", { exact: true })).toBeVisible();
   await expect(page.getByText("模型路由", { exact: true })).toBeVisible();

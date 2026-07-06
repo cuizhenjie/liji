@@ -167,6 +167,11 @@ import {
   type ScenarioJourney,
 } from "@/lib/liji/secretary-command-center";
 import {
+  buildSecretaryBrief,
+  type SecretaryBrief,
+  type SecretaryBriefAction,
+} from "@/lib/liji/secretary-brief";
+import {
   buildSecretaryTimeline,
   type SecretaryTimelineItem,
 } from "@/lib/liji/secretary-timeline";
@@ -490,6 +495,18 @@ function acceptanceReportStatusVariant(status: AcceptanceReport["status"]) {
   if (status === "accepted") return "secondary" as const;
   if (status === "blocked") return "destructive" as const;
   return "outline" as const;
+}
+
+function secretaryBriefStatusText(status: SecretaryBrief["status"]) {
+  if (status === "urgent") return "立即处理";
+  if (status === "attention") return "待确认";
+  return "稳定";
+}
+
+function secretaryBriefStatusVariant(status: SecretaryBrief["status"]) {
+  if (status === "urgent") return "destructive" as const;
+  if (status === "attention") return "outline" as const;
+  return "secondary" as const;
 }
 
 function reservePressureText(level: NextMonthReservePlan["pressureLevel"]) {
@@ -1848,6 +1865,12 @@ function DashboardSection(props: {
     aiContinuity: commandCenter.aiContinuity,
     remediationTasks,
   });
+  const secretaryBrief = buildSecretaryBrief({
+    data: scopedData,
+    commandCenter,
+    acceptanceReport,
+    timeline,
+  });
   const highConfidenceCaptures = pendingCaptures.filter((capture) => capture.parsed.confidence >= 0.75);
   const lowConfidenceCaptures = pendingCaptures.filter((capture) => capture.parsed.confidence < 0.65);
 
@@ -2238,8 +2261,27 @@ function DashboardSection(props: {
     props.onNavigate(action.section);
   }
 
+  function runSecretaryBriefAction(action: SecretaryBriefAction) {
+    if (action.kind === "assistant") {
+      const assistantAction = commandCenter.actions.find((item) => item.id === action.id);
+      if (assistantAction) {
+        runAssistantAction(assistantAction);
+        return;
+      }
+    }
+
+    if (action.kind === "acceptance") {
+      runAcceptanceReportAction(action.action);
+      return;
+    }
+
+    props.onNavigate(action.section);
+  }
+
   return (
     <div className="flex flex-col gap-4">
+      <SecretaryBriefCard brief={secretaryBrief} onAction={runSecretaryBriefAction} />
+
       <AcceptanceReportCard report={acceptanceReport} onAction={runAcceptanceReportAction} />
 
       <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
@@ -2551,6 +2593,66 @@ function DashboardSection(props: {
         </Card>
       </div>
     </div>
+  );
+}
+
+function SecretaryBriefCard({
+  brief,
+  onAction,
+}: {
+  brief: SecretaryBrief;
+  onAction: (action: SecretaryBriefAction) => void;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>今日秘书简报</CardTitle>
+        <CardDescription>{brief.headline}</CardDescription>
+        <CardAction>
+          <Badge variant={secretaryBriefStatusVariant(brief.status)}>
+            {secretaryBriefStatusText(brief.status)}
+          </Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <InsightCell label="秘书分" value={`${brief.score}`} />
+          {brief.metrics.map((metric) => (
+            <div key={metric.label} className="rounded-lg border p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-sm text-muted-foreground">{metric.label}</span>
+                <Badge variant={secretaryBriefStatusVariant(metric.status)}>
+                  {secretaryBriefStatusText(metric.status)}
+                </Badge>
+              </div>
+              <div className="text-2xl font-semibold tabular-nums">{metric.value}</div>
+              <div className="mt-1 text-xs text-muted-foreground">{metric.detail}</div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 grid grid-cols-1 gap-2 xl:grid-cols-3">
+          {brief.handoffLines.map((line) => (
+            <div key={line} className="rounded-md border px-3 py-2 text-sm leading-5 text-muted-foreground">
+              {line}
+            </div>
+          ))}
+        </div>
+      </CardContent>
+      <CardFooter className="justify-between gap-3">
+        <span className="text-sm text-muted-foreground">
+          主动作：{brief.primaryAction?.label ?? "持续维护关系资产"}
+        </span>
+        <Button
+          size="sm"
+          disabled={!brief.primaryAction}
+          aria-label={`执行今日秘书简报 ${brief.primaryAction?.label ?? "无主动作"}`}
+          onClick={() => brief.primaryAction && onAction(brief.primaryAction)}
+        >
+          {brief.status === "urgent" ? <AlertTriangleIcon data-icon="inline-start" /> : <CheckIcon data-icon="inline-start" />}
+          {brief.primaryAction?.cta ?? "已完成"}
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }
 
