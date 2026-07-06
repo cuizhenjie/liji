@@ -1,3 +1,4 @@
+import { buildFulfillmentConciergePack } from "./fulfillment-concierge";
 import type { LevelTwoRecommendationCard } from "./level2-recommendations";
 import type { Contact, WorkspaceData } from "./types";
 
@@ -199,6 +200,8 @@ function f301FestivalFulfillment(data: WorkspaceData, levelTwoCards: LevelTwoRec
   const festivalPlan = data.plans.find((plan) => plan.scenario === "festival");
   const categories = new Set(festivalPlan?.items.map((planItem) => planItem.category) ?? []);
   const hasExternalLinks = Boolean(festivalPlan?.items.some((planItem) => planItem.url));
+  const contact = data.contacts.find((item) => item.id === festivalPlan?.contactId);
+  const conciergePack = festivalPlan ? buildFulfillmentConciergePack(festivalPlan, contact) : null;
   const checks: FeatureAcceptanceCheck[] = [
     {
       id: "split",
@@ -219,6 +222,12 @@ function f301FestivalFulfillment(data: WorkspaceData, levelTwoCards: LevelTwoRec
       passed: hasExternalLinks,
       detail: hasExternalLinks ? "包含京东/美团等链接" : "缺少外部链接",
       critical: true,
+    },
+    {
+      id: "concierge",
+      label: "生成卡片文案与包装检查",
+      passed: Boolean(conciergePack?.primaryCopy && conciergePack.packagingOptions.length >= 3),
+      detail: conciergePack ? `${conciergePack.title} · ${conciergePack.packagingOptions.length} 项检查` : "缺少礼仪交付包",
     },
     {
       id: "confirmation",

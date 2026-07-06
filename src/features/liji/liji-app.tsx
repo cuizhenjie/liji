@@ -110,6 +110,7 @@ import {
   updateBudgetTotal,
 } from "@/lib/liji/finance";
 import { buildPlanFulfillmentLinks } from "@/lib/liji/fulfillment";
+import { buildFulfillmentConciergePack } from "@/lib/liji/fulfillment-concierge";
 import type { FulfillmentReconciliationDiscrepancy } from "@/lib/liji/fulfillment-reconciliation";
 import { createUuid } from "@/lib/liji/ids";
 import type { IntegrationStatus } from "@/lib/liji/integrations";
@@ -2767,6 +2768,7 @@ function FulfillmentSection(props: {
           <PlanCard
             key={plan.id}
             plan={plan}
+            contact={props.data.contacts.find((contact) => contact.id === plan.contactId)}
             linksEnabled={props.data.privacy.thirdPartyLinksEnabled}
             onConfirm={props.onConfirmPlan}
             onBookmark={props.onBookmarkPlan}
@@ -3746,16 +3748,19 @@ function ContactList({
 
 function PlanCard({
   plan,
+  contact,
   linksEnabled,
   onConfirm,
   onBookmark,
 }: {
   plan: FulfillmentPlan;
+  contact?: Contact;
   linksEnabled: boolean;
   onConfirm: (planId: string) => void;
   onBookmark: (planId: string) => void;
 }) {
   const trackedLinks = linksEnabled ? buildPlanFulfillmentLinks(plan) : [];
+  const conciergePack = buildFulfillmentConciergePack(plan, contact);
 
   function recordFulfillmentClick(itemId: string, link: ReturnType<typeof buildPlanFulfillmentLinks>[number] | undefined) {
     if (!link) {
@@ -3830,6 +3835,45 @@ function PlanCard({
               })()}
             </div>
           ))}
+          <div className="rounded-lg border p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="font-medium">{conciergePack.title}</div>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">{conciergePack.primaryCopy}</p>
+              </div>
+              <Badge variant="outline">
+                {conciergePack.tone === "business_reserved" ? "克制商务" : conciergePack.tone === "travel_brief" ? "行前简报" : "温暖亲密"}
+              </Badge>
+            </div>
+            {conciergePack.secondaryCopy && (
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">{conciergePack.secondaryCopy}</p>
+            )}
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div>
+                <div className="text-xs font-medium text-muted-foreground">包装/交付选项</div>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {conciergePack.packagingOptions.map((option) => (
+                    <Badge key={option} variant="secondary">{option}</Badge>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs font-medium text-muted-foreground">确认清单</div>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {conciergePack.handoffChecklist.map((item) => (
+                    <Badge key={item} variant="outline">{item}</Badge>
+                  ))}
+                </div>
+              </div>
+            </div>
+            {conciergePack.riskNotes.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-1">
+                {conciergePack.riskNotes.map((note) => (
+                  <Badge key={note} variant="destructive">{note}</Badge>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </CardContent>
       <CardFooter className="justify-between">

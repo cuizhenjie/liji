@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => window.localStorage.clear());
   await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();
@@ -51,7 +52,10 @@ test("opens fulfillment and generates a travel plan", async ({ page }) => {
   await page.getByRole("button", { name: "履约", exact: true }).click();
   await page.getByRole("button", { name: /生成旅行方案/ }).click();
 
+  await expect(page.getByText("礼仪交付包").first()).toBeVisible();
+  await expect(page.getByText("随单放入手写祝福卡").first()).toBeVisible();
   await expect(page.getByText("广州商务差旅方案").first()).toBeVisible();
+  await expect(page.getByText("行程交付包").first()).toBeVisible();
   await expect(page.getByText("餐饮与打车弹性池").first()).toBeVisible();
 });
 
@@ -59,7 +63,7 @@ test("confirms a fulfillment plan and preserves it after reload", async ({ page 
   await page.getByRole("button", { name: "履约", exact: true }).click();
   await page.getByRole("button", { name: /确认方案 李小满5岁生日履约方案/ }).first().click();
 
-  await expect(page.getByText("方案已确认")).toBeVisible();
+  await expect(page.getByText("方案已确认", { exact: true })).toBeVisible();
   await page.reload();
   await page.getByRole("button", { name: "履约", exact: true }).click();
   await expect(page.getByText("已确认").first()).toBeVisible();
@@ -69,7 +73,7 @@ test("acknowledges level one reminders from the right rail", async ({ page }) =>
   await page.getByRole("button", { name: /确认提醒 周明客户宴请/ }).click();
 
   await expect(page.getByText("已确认提醒，停止升级")).toBeVisible();
-  await expect(page.getByRole("button", { name: /确认提醒 周明客户宴请/ })).toContainText("已确认");
+  await expect(page.getByText("已确认提醒：周明客户宴请").first()).toBeVisible();
 });
 
 test("adds bills and manual transactions from finance", async ({ page }) => {
