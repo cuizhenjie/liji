@@ -10,12 +10,14 @@ test.beforeEach(async ({ page }) => {
 test("captures and confirms a birthday event", async ({ page }) => {
   await expect(page.getByLabel("采集收件箱输入")).toBeVisible();
   await expect(page.getByText("今日秘书工作台")).toBeVisible();
+  await expect(page.getByText("验收驾驶舱")).toBeVisible();
+  await expect(page.getByText("总体验收分")).toBeVisible();
   await expect(page.getByText("数据资产体检")).toBeVisible();
   await expect(page.getByText("AI 连续性")).toBeVisible();
   await expect(page.getByText("场景流转")).toBeVisible();
   await expect(page.getByText("场景验收作战室")).toBeVisible();
   await expect(page.getByText("功能验收矩阵")).toBeVisible();
-  await expect(page.getByText("F202 · 冗余预警机制")).toBeVisible();
+  await expect(page.getByText("F202 · 冗余预警机制", { exact: true })).toBeVisible();
   await expect(page.getByText("客户宴请").first()).toBeVisible();
   await expect(page.getByText("资产补齐任务包")).toBeVisible();
   await expect(page.getByText("关联日程：房贷扣款")).toHaveCount(0);
@@ -52,6 +54,16 @@ test("captures and confirms a birthday event", async ({ page }) => {
   await expect(page.getByText("女儿5岁生日").first()).toBeVisible();
   await page.getByRole("button", { name: /确认采集 女儿5岁生日/ }).click();
   await expect(page.getByText("已确认并写入工作区")).toBeVisible();
+});
+
+test("executes the acceptance cockpit next action", async ({ page }) => {
+  await expect(page.getByText("验收驾驶舱")).toBeVisible();
+  await expect(page.getByText("功能验收 / F202 · 冗余预警机制").first()).toBeVisible();
+
+  await page.getByRole("button", { name: /推进下一项验收 F202 冗余预警机制/ }).click();
+
+  await expect(page.getByText("已确认提醒，停止升级").first()).toBeVisible();
+  await expect(page.getByText("下一动作：").first()).toBeVisible();
 });
 
 test("runs dashboard scenario and asset remediation actions", async ({ page }) => {

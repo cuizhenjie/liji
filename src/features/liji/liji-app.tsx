@@ -86,6 +86,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  buildAcceptanceReport,
+  type AcceptanceReport,
+  type AcceptanceReportAction,
+} from "@/lib/liji/acceptance-report";
 import type { CaptureSource } from "@/lib/liji/ai";
 import { deriveComplianceProfile } from "@/lib/liji/compliance";
 import { generateFestivalPlan, generateTravelPlan } from "@/lib/liji/budget";
@@ -470,6 +475,18 @@ function featureAcceptanceStatusText(status: FeatureAcceptanceItem["status"]) {
 }
 
 function featureAcceptanceStatusVariant(status: FeatureAcceptanceItem["status"]) {
+  if (status === "accepted") return "secondary" as const;
+  if (status === "blocked") return "destructive" as const;
+  return "outline" as const;
+}
+
+function acceptanceReportStatusText(status: AcceptanceReport["status"]) {
+  if (status === "accepted") return "验收通过";
+  if (status === "blocked") return "有阻塞";
+  return "待推进";
+}
+
+function acceptanceReportStatusVariant(status: AcceptanceReport["status"]) {
   if (status === "accepted") return "secondary" as const;
   if (status === "blocked") return "destructive" as const;
   return "outline" as const;
@@ -1824,6 +1841,13 @@ function DashboardSection(props: {
   const remediationTasks = buildDataAssetRemediationTasks(scopedData, 6);
   const assetLedger = buildDataAssetLedger(scopedData, 12);
   const timeline = buildSecretaryTimeline(data, 8);
+  const acceptanceReport = buildAcceptanceReport({
+    features: featureAcceptance,
+    scenarios: scenarioAcceptance,
+    dataAssets: commandCenter.dataAssets,
+    aiContinuity: commandCenter.aiContinuity,
+    remediationTasks,
+  });
   const highConfidenceCaptures = pendingCaptures.filter((capture) => capture.parsed.confidence >= 0.75);
   const lowConfidenceCaptures = pendingCaptures.filter((capture) => capture.parsed.confidence < 0.65);
 
@@ -2178,8 +2202,46 @@ function DashboardSection(props: {
     props.onNavigate(item.section);
   }
 
+  function runAcceptanceReportAction(action: AcceptanceReportAction) {
+    if (action.kind === "feature") {
+      const feature = featureAcceptance.find((item) => item.id === action.id);
+      if (feature) {
+        runFeatureAcceptanceAction(feature);
+        return;
+      }
+    }
+
+    if (action.kind === "scenario") {
+      const scenario = scenarioAcceptance.find((item) => item.id === action.id);
+      if (scenario) {
+        runScenarioAcceptanceAction(scenario);
+        return;
+      }
+    }
+
+    if (action.kind === "asset") {
+      const asset = commandCenter.dataAssets.items.find((item) => item.key === action.id);
+      if (asset) {
+        runDataAssetHealthAction(asset);
+        return;
+      }
+    }
+
+    if (action.kind === "remediation") {
+      const task = remediationTasks.find((item) => item.id === action.id);
+      if (task) {
+        runRemediationTaskAction(task);
+        return;
+      }
+    }
+
+    props.onNavigate(action.section);
+  }
+
   return (
     <div className="flex flex-col gap-4">
+      <AcceptanceReportCard report={acceptanceReport} onAction={runAcceptanceReportAction} />
+
       <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
         <Card>
           <CardHeader>
@@ -2489,6 +2551,61 @@ function DashboardSection(props: {
         </Card>
       </div>
     </div>
+  );
+}
+
+function AcceptanceReportCard({
+  report,
+  onAction,
+}: {
+  report: AcceptanceReport;
+  onAction: (action: AcceptanceReportAction) => void;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>验收驾驶舱</CardTitle>
+        <CardDescription>{report.nextStep}</CardDescription>
+        <CardAction>
+          <Badge variant={acceptanceReportStatusVariant(report.status)}>
+            {acceptanceReportStatusText(report.status)}
+          </Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <InsightCell label="总体验收分" value={`${report.score}`} />
+          <InsightCell label="已通过" value={`${report.passed}/${report.total}`} />
+          <InsightCell label="阻塞项" value={`${report.blocked}`} />
+          <InsightCell label="待处理" value={`${report.open}`} />
+        </div>
+        <Progress className="mt-4" value={report.score}>
+          <ProgressLabel>{report.score}%</ProgressLabel>
+          <span className="ml-auto text-xs text-muted-foreground">{report.nextAction?.label ?? "全部通过"}</span>
+        </Progress>
+        <div className="mt-4 grid grid-cols-1 gap-2 xl:grid-cols-2">
+          {report.evidenceLines.map((line) => (
+            <div key={line} className="rounded-md border px-3 py-2 text-sm leading-5 text-muted-foreground">
+              {line}
+            </div>
+          ))}
+        </div>
+      </CardContent>
+      <CardFooter className="justify-between gap-3">
+        <span className="text-sm text-muted-foreground">
+          下一动作：{report.nextAction?.label ?? "持续观察真实服务数据"}
+        </span>
+        <Button
+          size="sm"
+          disabled={!report.nextAction}
+          aria-label={`推进下一项验收 ${report.nextAction?.label ?? "全部通过"}`}
+          onClick={() => report.nextAction && onAction(report.nextAction)}
+        >
+          {report.blocked > 0 ? <AlertTriangleIcon data-icon="inline-start" /> : <ListChecksIcon data-icon="inline-start" />}
+          {report.nextAction?.cta ?? "已完成"}
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }
 
