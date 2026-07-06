@@ -207,7 +207,9 @@ export function buildDataAssetReport(data: WorkspaceData): DataAssetReport {
   const reviewedMemories = data.aiMemories.filter((memory) =>
     memory.reviewStatus === "healthy" || memory.reviewStatus === undefined
   ).length;
-  const actionablePlans = data.plans.filter((plan) => plan.items.length > 0 && plan.status !== "draft").length;
+  const settledPlans = data.plans.filter((plan) =>
+    plan.items.length > 0 && (plan.status === "confirmed" || plan.status === "bookmarked")
+  ).length;
 
   const items: DataAssetItem[] = [
     dataAssetItem({
@@ -253,7 +255,7 @@ export function buildDataAssetReport(data: WorkspaceData): DataAssetReport {
     dataAssetItem({
       key: "fulfillment",
       label: "履约资产",
-      owned: actionablePlans,
+      owned: settledPlans,
       total: Math.max(1, data.plans.length),
       section: "fulfillment",
       gap: "确认方案、外链和对账状态。",

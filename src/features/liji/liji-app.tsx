@@ -1863,6 +1863,38 @@ function DashboardSection(props: {
     props.onNavigate(action.section);
   }
 
+  function runDataAssetHealthAction(asset: DataAssetItem) {
+    if (asset.key === "fulfillment") {
+      const pendingPlan = props.plans.find((plan) => plan.status === "draft" || plan.status === "pending_confirmation");
+      if (pendingPlan) {
+        props.onConfirmPlan(pendingPlan.id);
+        return;
+      }
+    }
+
+    if (asset.key === "memory") {
+      const reviewMemory = data.aiMemories.find((memory) =>
+        memory.reviewStatus === "review_required" || memory.reviewStatus === "stale"
+      );
+      if (reviewMemory) {
+        props.onCorrectMemory(reviewMemory.id);
+        return;
+      }
+    }
+
+    if (asset.key === "schedule") {
+      const unconfirmedLevelOne = props.events.find((event) =>
+        event.reminderLevel === "level_1" && event.status !== "confirmed" && event.status !== "done"
+      );
+      if (unconfirmedLevelOne) {
+        props.onConfirmEvent(unconfirmedLevelOne.id);
+        return;
+      }
+    }
+
+    props.onNavigate(asset.section);
+  }
+
   function runLevelTwoRecommendationAction(card: LevelTwoRecommendationCard) {
     const plan = props.plans.find((item) => item.eventId === card.eventId);
     if (plan && plan.status !== "confirmed" && plan.status !== "bookmarked") {
@@ -2154,7 +2186,7 @@ function DashboardSection(props: {
                 <DataAssetHealthRow
                   key={asset.key}
                   asset={asset}
-                  onNavigate={props.onNavigate}
+                  onAction={runDataAssetHealthAction}
                 />
               ))}
             </div>
@@ -2416,10 +2448,10 @@ function DashboardSection(props: {
 
 function DataAssetHealthRow({
   asset,
-  onNavigate,
+  onAction,
 }: {
   asset: DataAssetItem;
-  onNavigate: (section: SectionId) => void;
+  onAction: (asset: DataAssetItem) => void;
 }) {
   const actionLabel = asset.status === "healthy" ? "查看资产" : "补齐资产";
 
@@ -2433,7 +2465,7 @@ function DataAssetHealthRow({
             size="xs"
             variant="ghost"
             aria-label={`${actionLabel} ${asset.label}`}
-            onClick={() => onNavigate(asset.section)}
+            onClick={() => onAction(asset)}
           >
             {asset.status === "healthy" ? "查看" : "补齐"}
           </Button>

@@ -69,6 +69,7 @@ describe("secretary command center", () => {
 
     const report = buildDataAssetReport({
       ...demoWorkspace,
+      plans: demoWorkspace.plans.map((plan) => ({ ...plan, status: "confirmed" })),
       contacts: demoWorkspace.contacts.map((contact, index) =>
         index === 0 ? { ...contact, preferences: [] } : contact
       ),
@@ -83,6 +84,13 @@ describe("secretary command center", () => {
     expect(report.items.find((item) => item.key === "relationship")?.section).toBe("contacts");
     expect(report.items.find((item) => item.key === "finance")?.section).toBe("finance");
     expect(report.nextAssetAction).toContain("AI 记忆");
+
+    const fulfillmentReport = buildDataAssetReport(demoWorkspace);
+    expect(fulfillmentReport.items.find((item) => item.key === "fulfillment")).toMatchObject({
+      owned: 0,
+      total: 2,
+      status: "blocked",
+    });
   });
 
   it("removes Level 2 fulfillment actions once the matching plan is confirmed", () => {

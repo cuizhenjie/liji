@@ -22,7 +22,7 @@ test("captures and confirms a birthday event", async ({ page }) => {
   await expect(page.getByText("关联交易：上海差旅").first()).toBeVisible();
   await expect(page.getByRole("button", { name: /查看资产 日程资产/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /查看资产 合规资产/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /查看资产 履约资产/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /补齐资产 履约资产/ })).toBeVisible();
   await expect(page.getByText("资产明细台账")).toBeVisible();
   await expect(page.getByText("已关联周期账单 房贷")).toBeVisible();
   await expect(page.getByText("手动交易待关联关系、差旅或账单来源")).toBeVisible();
@@ -67,6 +67,14 @@ test("runs dashboard scenario and asset remediation actions", async ({ page }) =
 
   await page.getByRole("button", { name: /执行资产补齐 确认履约方案：李小满5岁生日履约方案/ }).click();
   await expect(page.getByText("生日关怀链路已可执行。")).toBeVisible();
+});
+
+test("executes data asset health actions", async ({ page }) => {
+  await expect(page.getByText("数据资产体检")).toBeVisible();
+  await expect(page.getByRole("button", { name: /补齐资产 履约资产/ })).toBeVisible();
+
+  await page.getByRole("button", { name: /补齐资产 履约资产/ }).click();
+  await expect(page.getByText("方案已确认", { exact: true })).toBeVisible();
 });
 
 test("executes pending secretary timeline actions", async ({ page }) => {
