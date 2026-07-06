@@ -1597,6 +1597,7 @@ export function LijiApp({ initialData }: LijiAppProps) {
                   onBirthdayPlan={generateBirthdayPlan}
                   onTravelPlan={generateBusinessTravelPlan}
                   onConfirmEvent={confirmEventRead}
+                  onConfirmLog={confirmLogRead}
                   onConfirmPlan={confirmPlan}
                   onCorrectMemory={correctMemory}
                   onNavigate={setActiveSection}
@@ -1795,6 +1796,7 @@ function DashboardSection(props: {
   onBirthdayPlan: (eventId?: string) => void;
   onTravelPlan: () => void;
   onConfirmEvent: (eventId: string) => void;
+  onConfirmLog: (logId: string) => void;
   onConfirmPlan: (planId: string) => void;
   onCorrectMemory: (memoryId: string) => void;
   onNavigate: (section: SectionId) => void;
@@ -1979,6 +1981,54 @@ function DashboardSection(props: {
     }
 
     props.onNavigate(entry.section);
+  }
+
+  function runTimelineAction(item: SecretaryTimelineItem) {
+    if (item.id.startsWith("capture:")) {
+      const capture = pendingCaptures.find((entry) => item.id === `capture:${entry.id}`);
+      if (capture && capture.parsed.confidence >= 0.75) {
+        props.onConfirm(capture);
+        return;
+      }
+
+      toast("低置信采集需要先编辑确认");
+      props.onNavigate("dashboard");
+      return;
+    }
+
+    if (item.id.startsWith("event:")) {
+      const eventId = item.id.replace("event:", "");
+      const event = props.events.find((entry) => entry.id === eventId);
+      if (event && event.status !== "confirmed" && event.status !== "done") {
+        props.onConfirmEvent(event.id);
+        return;
+      }
+    }
+
+    if (item.id.startsWith("plan:")) {
+      const planId = item.id.replace("plan:", "");
+      const plan = props.plans.find((entry) => entry.id === planId);
+      if (plan && plan.status !== "confirmed" && plan.status !== "bookmarked") {
+        props.onConfirmPlan(plan.id);
+        return;
+      }
+    }
+
+    if (item.id.startsWith("notification:")) {
+      const logId = item.id.replace("notification:", "");
+      const log = data.notificationLogs.find((entry) => entry.id === logId);
+      if (log && (log.status === "queued" || log.status === "sent" || log.status === "escalated")) {
+        props.onConfirmLog(log.id);
+        return;
+      }
+    }
+
+    if (item.id.startsWith("memory:")) {
+      props.onCorrectMemory(item.id.replace("memory:", ""));
+      return;
+    }
+
+    props.onNavigate(item.section);
   }
 
   return (
@@ -2221,7 +2271,7 @@ function DashboardSection(props: {
         </Card>
       </div>
 
-      <SecretaryTimelineCard timeline={timeline} onNavigate={props.onNavigate} />
+      <SecretaryTimelineCard timeline={timeline} onAction={runTimelineAction} />
 
       <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
         <Card>
@@ -2541,10 +2591,10 @@ function FeatureAcceptanceMatrixCard({
 
 function SecretaryTimelineCard({
   timeline,
-  onNavigate,
+  onAction,
 }: {
   timeline: SecretaryTimelineItem[];
-  onNavigate: (section: SectionId) => void;
+  onAction: (item: SecretaryTimelineItem) => void;
 }) {
   return (
     <Card>
@@ -2575,8 +2625,14 @@ function SecretaryTimelineCard({
                   <div className="mt-2 font-medium">{item.title}</div>
                   <p className="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground">{item.detail}</p>
                 </div>
-                <Button className="mt-3 w-fit" size="sm" variant="outline" onClick={() => onNavigate(item.section)}>
-                  <HistoryIcon data-icon="inline-start" />
+                <Button
+                  className="mt-3 w-fit"
+                  size="sm"
+                  variant="outline"
+                  aria-label={`执行时间线动作 ${item.title}`}
+                  onClick={() => onAction(item)}
+                >
+                  {item.status === "done" || item.status === "info" ? <HistoryIcon data-icon="inline-start" /> : <CheckIcon data-icon="inline-start" />}
                   {item.cta}
                 </Button>
               </div>

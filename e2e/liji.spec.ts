@@ -69,6 +69,18 @@ test("runs dashboard scenario and asset remediation actions", async ({ page }) =
   await expect(page.getByText("生日关怀链路已可执行。")).toBeVisible();
 });
 
+test("executes pending secretary timeline actions", async ({ page }) => {
+  await expect(page.getByText("秘书时间线")).toBeVisible();
+
+  await page.getByRole("button", { name: /执行时间线动作 待确认方案：李小满5岁生日履约方案/ }).click();
+  await expect(page.getByText("方案已确认", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /执行时间线动作 待确认方案：李小满5岁生日履约方案/ })).toHaveCount(0);
+
+  await page.getByRole("button", { name: /执行时间线动作 待确认投递：周明客户宴请/ }).click();
+  await expect(page.getByText("投递日志已确认")).toBeVisible();
+  await expect(page.getByRole("button", { name: /执行时间线动作 待确认投递：周明客户宴请/ })).toHaveCount(0);
+});
+
 test("opens fulfillment and generates a travel plan", async ({ page }) => {
   await page.getByRole("button", { name: "履约", exact: true }).click();
   await page.getByRole("button", { name: /生成旅行方案/ }).click();
