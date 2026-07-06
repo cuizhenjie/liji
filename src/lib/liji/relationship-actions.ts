@@ -12,6 +12,8 @@ export type RelationshipAction = {
   id: string;
   contactId: string;
   contactName: string;
+  eventId?: string;
+  memoryId?: string;
   priority: RelationshipActionPriority;
   scenario: RelationshipActionScenario;
   title: string;
@@ -53,7 +55,12 @@ function complianceLimit(contact: Contact) {
 
 function upcomingEvents(data: WorkspaceData, contact: Contact, now: Date) {
   return data.events
-    .filter((event) => event.contactId === contact.id && event.status !== "done" && event.status !== "missed")
+    .filter((event) =>
+      event.contactId === contact.id &&
+      event.status !== "done" &&
+      event.status !== "missed" &&
+      !(event.reminderLevel === "level_1" && event.status === "confirmed")
+    )
     .map((event) => ({ event, daysUntil: daysBetween(event.date, now) }))
     .filter((item) => item.daysUntil >= 0 && item.daysUntil <= 15)
     .sort((left, right) => left.daysUntil - right.daysUntil);
@@ -64,15 +71,22 @@ function lastInteractionDays(contact: Contact, now: Date) {
   return Math.max(0, Math.round((dateKey(dateOnly(now)) - dateKey(contact.lastInteractionAt.slice(0, 10))) / 86_400_000));
 }
 
-function eventAction(contact: Contact, event: CalendarEvent, daysUntil: number): RelationshipAction {
+function eventAction(
+  contact: Contact,
+  event: CalendarEvent,
+  daysUntil: number,
+  planStatus?: "draft" | "pending_confirmation" | "confirmed" | "bookmarked"
+): RelationshipAction {
   const isLevelOne = event.reminderLevel === "level_1";
   const isBirthday = /生日|纪念日/.test(event.title);
+  const hasOpenPlan = planStatus === "draft" || planStatus === "pending_confirmation";
 
   if (isLevelOne || isRiskyContact(contact)) {
     return {
       id: `event:${contact.id}:${event.id}`,
       contactId: contact.id,
       contactName: contact.name,
+      eventId: event.id,
       priority: isLevelOne && daysUntil <= 3 ? "critical" : "high",
       scenario: "compliance",
       title: `确认 ${event.title} 的合规与偏好`,
@@ -86,26 +100,35 @@ function eventAction(contact: Contact, event: CalendarEvent, daysUntil: number):
     id: `event:${contact.id}:${event.id}`,
     contactId: contact.id,
     contactName: contact.name,
+    eventId: event.id,
     priority: isBirthday && daysUntil <= 15 ? "high" : "normal",
     scenario: "event",
-    title: `准备 ${event.title}`,
-    detail: `基于 ${preferenceSummary(contact)} 先锁定礼物、餐饮或关怀动作。`,
+    title: hasOpenPlan ? `确认 ${event.title}履约方案` : `准备 ${event.title}`,
+    detail: hasOpenPlan
+      ? `已有待确认方案，确认后会沉淀为可复盘履约资产。`
+      : `基于 ${preferenceSummary(contact)} 先锁定礼物、餐饮或关怀动作。`,
     evidence: `${event.date} · ${daysUntil} 天后`,
-    cta: "准备方案",
+    cta: hasOpenPlan ? "确认方案" : "准备方案",
   };
 }
 
 function contactActions(data: WorkspaceData, contact: Contact, now: Date): RelationshipAction[] {
   const actions: RelationshipAction[] = [];
-  const [nextEvent] = upcomingEvents(data, contact, now);
-  const needsMemoryReview = data.aiMemories.some((memory) =>
+  const nextEvent = upcomingEvents(data, contact, now).find(({ event }) => {
+    if (event.reminderLevel === "level_1" || isRiskyContact(contact)) return true;
+    const existingPlan = data.plans.find((plan) => plan.eventId === event.id);
+    return existingPlan?.status !== "confirmed" && existingPlan?.status !== "bookmarked";
+  });
+  const memoryForReview = data.aiMemories.find((memory) =>
     memory.contactId === contact.id &&
     (memory.reviewStatus === "review_required" || memory.reviewStatus === "stale")
   );
+  const fallbackMemory = data.aiMemories.find((memory) => memory.contactId === contact.id);
   const interactionDays = lastInteractionDays(contact, now);
 
   if (nextEvent) {
-    actions.push(eventAction(contact, nextEvent.event, nextEvent.daysUntil));
+    const existingPlan = data.plans.find((plan) => plan.eventId === nextEvent.event.id);
+    actions.push(eventAction(contact, nextEvent.event, nextEvent.daysUntil, existingPlan?.status));
   }
 
   if (isRiskyContact(contact) && !contact.compliance.policyNote) {
@@ -136,12 +159,13 @@ function contactActions(data: WorkspaceData, contact: Contact, now: Date): Relat
     });
   }
 
-  if (needsMemoryReview || contact.aiMemoryHealth < 90) {
+  if (memoryForReview || contact.aiMemoryHealth < 90) {
     actions.push({
       id: `memory:${contact.id}`,
       contactId: contact.id,
       contactName: contact.name,
-      priority: needsMemoryReview ? "high" : "normal",
+      memoryId: memoryForReview?.id ?? fallbackMemory?.id,
+      priority: memoryForReview ? "high" : "normal",
       scenario: "memory",
       title: `复核 ${contact.name} 的 AI 记忆`,
       detail: "把低置信或陈旧记忆修正后，再沉淀到长期偏好资产。",

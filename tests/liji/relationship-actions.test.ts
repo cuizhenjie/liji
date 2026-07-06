@@ -9,6 +9,7 @@ describe("relationship actions", () => {
 
     expect(actions[0]).toMatchObject({
       contactId: "c-client",
+      eventId: "e-client-dinner",
       priority: "critical",
       scenario: "compliance",
       title: "确认 周明客户宴请 的合规与偏好",
@@ -18,10 +19,12 @@ describe("relationship actions", () => {
         expect.objectContaining({
           contactId: "c-daughter",
           priority: "high",
-          title: "准备 李小满5岁生日",
+          title: "确认 李小满5岁生日履约方案",
+          cta: "确认方案",
         }),
         expect.objectContaining({
           contactId: "c-client",
+          memoryId: "m-1",
           scenario: "memory",
           title: "复核 周明 的 AI 记忆",
         }),

@@ -169,6 +169,7 @@ import {
   acknowledgeEvent,
   acknowledgeNotificationLog,
   applyPreferenceSuggestion,
+  applyRelationshipAction,
   applyConfirmedCapture,
   applyConfirmedCaptures,
   archiveCapture as archiveCaptureWorkflow,
@@ -1429,6 +1430,18 @@ export function LijiApp({ initialData }: LijiAppProps) {
     toast.success("偏好已写入画像");
   }
 
+  function runRelationshipAction(action: RelationshipAction) {
+    setSelectedContactId(action.contactId);
+
+    if (action.scenario === "profile") {
+      toast("已定位画像缺口，请补充偏好或标签");
+      return;
+    }
+
+    workspace.setData((current) => applyRelationshipAction(current, action));
+    toast.success("关系行动已推进");
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="flex min-h-screen">
@@ -1589,6 +1602,7 @@ export function LijiApp({ initialData }: LijiAppProps) {
                   onCorrectMemory={correctMemory}
                   onUpdateMemory={updateMemoryContent}
                   onConfirmPreferenceSuggestion={confirmPreferenceSuggestion}
+                  onRelationshipAction={runRelationshipAction}
                   memoryReviewPending={isPending}
                 />
               )}
@@ -2451,6 +2465,7 @@ function ContactsSection(props: {
   onCorrectMemory: (id: string) => void;
   onUpdateMemory: (id: string, content: string) => void;
   onConfirmPreferenceSuggestion: (suggestion: PreferenceSuggestion) => void;
+  onRelationshipAction: (action: RelationshipAction) => void;
   memoryReviewPending: boolean;
 }) {
   const selectedContact = props.contacts.find((contact) => contact.id === props.selectedContactId);
@@ -2600,8 +2615,8 @@ function ContactsSection(props: {
                       <Button
                         size="sm"
                         variant="outline"
-                        aria-label={`查看关系行动 ${action.contactName} ${action.title}`}
-                        onClick={() => props.onSelectContact(action.contactId)}
+                        aria-label={`执行关系行动 ${action.contactName} ${action.title}`}
+                        onClick={() => props.onRelationshipAction(action)}
                       >
                         <UserRoundIcon data-icon="inline-start" />
                         {action.cta}

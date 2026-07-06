@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseNaturalLanguageInput } from "../../src/lib/liji/parser";
 import { buildPreferenceSuggestions } from "../../src/lib/liji/preference-suggestions";
+import { buildRelationshipActions } from "../../src/lib/liji/relationship-actions";
 import { demoContacts, demoWorkspace } from "../../src/lib/liji/sample-data";
 import {
   acknowledgeEvent,
@@ -11,6 +12,7 @@ import {
   archiveCaptures,
   applyConfirmedCapture,
   applyPreferenceSuggestion,
+  applyRelationshipAction,
   rejectCapture,
   setPlanStatus,
 } from "../../src/lib/liji/workflow";
@@ -114,5 +116,44 @@ describe("business workflow", () => {
     );
     expect(memory?.reviewStatus).toBe("healthy");
     expect(memory?.reviewedAt).toBe("2026-07-01T01:00:00.000Z");
+  });
+
+  it("executes a relationship compliance action by confirming the redline event", () => {
+    const [action] = buildRelationshipActions(demoWorkspace);
+    const next = applyRelationshipAction(demoWorkspace, action);
+
+    expect(next.events.find((event) => event.id === "e-client-dinner")?.status).toBe("confirmed");
+    expect(next.notificationLogs.some((log) =>
+      log.eventId === "e-client-dinner" && log.status === "confirmed"
+    )).toBe(true);
+  });
+
+  it("executes a relationship event action by confirming the matching fulfillment plan", () => {
+    const action = buildRelationshipActions(demoWorkspace).find((item) => item.contactId === "c-daughter");
+    const next = applyRelationshipAction(demoWorkspace, action!);
+
+    expect(next.plans.find((plan) => plan.eventId === "e-daughter-birthday")?.status).toBe("confirmed");
+    expect(buildRelationshipActions(next).some((item) => item.contactId === "c-daughter")).toBe(false);
+  });
+
+  it("executes a relationship follow-up action by creating a scheduled touchpoint", () => {
+    const workspace = {
+      ...demoWorkspace,
+      contacts: demoWorkspace.contacts.map((contact) =>
+        contact.id === "c-mother"
+          ? { ...contact, lastInteractionAt: "2026-04-15T08:30:00+08:00" }
+          : contact
+      ),
+    };
+    const action = buildRelationshipActions(workspace).find((item) => item.scenario === "follow_up");
+    const next = applyRelationshipAction(workspace, action!);
+
+    expect(next.events[0]).toMatchObject({
+      title: "陈兰关系触达",
+      date: "2026-07-02",
+      contactId: "c-mother",
+      reminderLevel: "level_3",
+      status: "scheduled",
+    });
   });
 });
