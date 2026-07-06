@@ -735,6 +735,8 @@ export function LijiApp({ initialData }: LijiAppProps) {
   const [draftRelation, setDraftRelation] = useState("");
   const [draftLabels, setDraftLabels] = useState("重要客户,国企高管");
   const [draftPreference, setDraftPreference] = useState("");
+  const [draftIdentityTemplate, setDraftIdentityTemplate] = useState("");
+  const [identityTemplates, setIdentityTemplates] = useState<Array<{ id: string; name: string; category: string; description: string }>>([]);
   const [festivalBudget, setFestivalBudget] = useState("2000");
   const [travelOrigin, setTravelOrigin] = useState("上海");
   const [travelDestination, setTravelDestination] = useState("广州");
@@ -861,6 +863,25 @@ export function LijiApp({ initialData }: LijiAppProps) {
     if ("serviceWorker" in navigator) {
       void navigator.serviceWorker.register("/sw.js").catch(() => undefined);
     }
+  }, []);
+
+  // Load identity templates
+  useEffect(() => {
+    let cancelled = false;
+    async function loadTemplates() {
+      try {
+        const response = await fetch("/api/templates/identity");
+        if (!response.ok) return;
+        const result = await response.json() as { ok: boolean; data: Array<{ id: string; name: string; category: string; description: string }> };
+        if (!cancelled && result.ok) {
+          setIdentityTemplates(result.data);
+        }
+      } catch {
+        // Templates are optional; silently ignore errors
+      }
+    }
+    void loadTemplates();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -1682,6 +1703,9 @@ export function LijiApp({ initialData }: LijiAppProps) {
                   onConfirmPreferenceSuggestion={confirmPreferenceSuggestion}
                   onRelationshipAction={runRelationshipAction}
                   memoryReviewPending={isPending}
+                  identityTemplates={identityTemplates}
+                  draftIdentityTemplate={draftIdentityTemplate}
+                  onDraftIdentityTemplate={setDraftIdentityTemplate}
                 />
               )}
               {activeSection === "calendar" && (
@@ -3305,6 +3329,9 @@ function ContactsSection(props: {
   onConfirmPreferenceSuggestion: (suggestion: PreferenceSuggestion) => void;
   onRelationshipAction: (action: RelationshipAction) => void;
   memoryReviewPending: boolean;
+  identityTemplates: Array<{ id: string; name: string; category: string; description: string }>;
+  draftIdentityTemplate: string;
+  onDraftIdentityTemplate: (value: string) => void;
 }) {
   const selectedContact = props.contacts.find((contact) => contact.id === props.selectedContactId);
   const visibleContactIds = new Set(props.contacts.map((contact) => contact.id));
@@ -3528,6 +3555,22 @@ function ContactsSection(props: {
               <Field>
                 <FieldLabel>关系</FieldLabel>
                 <Input value={props.draftRelation} onChange={(event) => props.onDraftRelation(event.target.value)} placeholder="重要客户 / 母亲 / 伴侣" />
+              </Field>
+              <Field>
+                <FieldLabel>身份模板</FieldLabel>
+                <select
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                  value={props.draftIdentityTemplate}
+                  onChange={(event) => props.onDraftIdentityTemplate(event.target.value)}
+                >
+                  <option value="">自动匹配（根据标签）</option>
+                  {props.identityTemplates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name} - {template.description}
+                    </option>
+                  ))}
+                </select>
+                <FieldDescription>选择身份模板可自动绑定合规规则和推荐策略。</FieldDescription>
               </Field>
               <Field>
                 <FieldLabel>标签</FieldLabel>
