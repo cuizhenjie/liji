@@ -1,6 +1,7 @@
 import { buildFulfillmentConciergePack } from "./fulfillment-concierge";
 import { buildNextMonthReservePlan } from "./insights";
 import type { LevelTwoRecommendationCard } from "./level2-recommendations";
+import { buildRelationshipActions } from "./relationship-actions";
 import { buildTravelReadinessBrief } from "./travel-readiness";
 import type { Contact, WorkspaceData } from "./types";
 
@@ -65,6 +66,7 @@ function f101IdentityProfile(data: WorkspaceData): FeatureAcceptanceItem {
   const riskyContacts = data.contacts.filter(riskyContact);
   const contactsWithPreferences = data.contacts.filter((contact) => contact.preferences.length >= 2);
   const riskyWithCompliance = riskyContacts.filter((contact) => contact.compliance.policyNote);
+  const relationshipActions = buildRelationshipActions(data);
   const checks: FeatureAcceptanceCheck[] = [
     {
       id: "contacts",
@@ -92,6 +94,12 @@ function f101IdentityProfile(data: WorkspaceData): FeatureAcceptanceItem {
       label: "AI 记忆可复核纠偏",
       passed: data.aiMemories.length > 0,
       detail: `${data.aiMemories.length} 条 AI/人工记忆`,
+    },
+    {
+      id: "action-plan",
+      label: "生成关系维护行动建议",
+      passed: relationshipActions.length > 0,
+      detail: `${relationshipActions.length} 个秘书动作`,
     },
   ];
 

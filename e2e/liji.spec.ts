@@ -161,6 +161,8 @@ test("edits AI memory corrections", async ({ page }) => {
 test("writes AI memory preference suggestions into a VIP profile", async ({ page }) => {
   await page.getByRole("button", { name: "人脉", exact: true }).click();
 
+  await expect(page.getByText("关系健康行动")).toBeVisible();
+  await expect(page.getByText("确认 周明客户宴请 的合规与偏好")).toBeVisible();
   await expect(page.getByText("偏好入库建议")).toBeVisible();
   await expect(page.getByText("周明 · 安静包间")).toBeVisible();
   await page.getByRole("button", { name: /写入偏好 周明 安静包间/ }).click();

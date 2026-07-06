@@ -139,6 +139,10 @@ import type { NativeBridgeCapability } from "@/lib/liji/native-bridge";
 import type { NotificationFailureCodebookEntry } from "@/lib/liji/notification-governance";
 import type { ProductionCheckReport } from "@/lib/liji/production-check";
 import {
+  buildRelationshipActions,
+  type RelationshipAction,
+} from "@/lib/liji/relationship-actions";
+import {
   buildProductionLaunchChecklist,
   type ProductionLaunchTask,
 } from "@/lib/liji/production-launch";
@@ -314,6 +318,18 @@ function preferenceCategoryText(category: PreferenceSuggestion["category"]) {
   };
 
   return map[category];
+}
+
+function relationshipScenarioText(scenario: RelationshipAction["scenario"]) {
+  const map: Record<RelationshipAction["scenario"], string> = {
+    event: "节点",
+    compliance: "合规",
+    profile: "画像",
+    memory: "记忆",
+    follow_up: "触达",
+  };
+
+  return map[scenario];
 }
 
 function identityLabel(mode: IdentityMode) {
@@ -2446,6 +2462,13 @@ function ContactsSection(props: {
       if (right.contactId === props.selectedContactId) return 1;
       return right.confidence - left.confidence;
     });
+  const relationshipActions = buildRelationshipActions(props.data)
+    .filter((action) => visibleContactIds.has(action.contactId))
+    .sort((left, right) => {
+      if (left.contactId === props.selectedContactId) return -1;
+      if (right.contactId === props.selectedContactId) return 1;
+      return 0;
+    });
   const contactEvents = selectedContact
     ? props.events.filter((event) => event.contactId === selectedContact.id)
     : [];
@@ -2538,6 +2561,54 @@ function ContactsSection(props: {
                     </div>
                   </div>
                 </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <CardTitle>关系健康行动</CardTitle>
+                <CardDescription>把画像、日程、合规和记忆转成下一步秘书动作。</CardDescription>
+              </div>
+              <Badge variant="secondary">{relationshipActions.length}</Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {relationshipActions.length === 0 ? (
+              <EmptyLine title="关系链路健康" detail="当前身份视图暂无需要补齐或推进的 VIP 动作。" />
+            ) : (
+              <div className="flex flex-col gap-3">
+                {relationshipActions.slice(0, 5).map((action) => (
+                  <div key={action.id} className="rounded-lg border p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant={priorityBadgeVariant(action.priority)}>
+                            {priorityText(action.priority)}
+                          </Badge>
+                          <Badge variant="outline">{relationshipScenarioText(action.scenario)}</Badge>
+                        </div>
+                        <div className="mt-2 font-medium">{action.title}</div>
+                        <p className="mt-1 text-sm leading-5 text-muted-foreground">{action.detail}</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-3 text-sm text-muted-foreground">
+                      <span>{action.evidence}</span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        aria-label={`查看关系行动 ${action.contactName} ${action.title}`}
+                        onClick={() => props.onSelectContact(action.contactId)}
+                      >
+                        <UserRoundIcon data-icon="inline-start" />
+                        {action.cta}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </CardContent>
