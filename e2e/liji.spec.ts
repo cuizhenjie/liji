@@ -20,9 +20,12 @@ test("captures and confirms a birthday event", async ({ page }) => {
   await expect(page.getByText("资产补齐任务包")).toBeVisible();
   await expect(page.getByText("关联日程：房贷扣款")).toHaveCount(0);
   await expect(page.getByText("关联交易：上海差旅").first()).toBeVisible();
-  await expect(page.getByRole("button", { name: /补齐资产 日程资产/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /补齐资产 合规资产/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /补齐资产 履约资产/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /查看资产 日程资产/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /查看资产 合规资产/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /查看资产 履约资产/ })).toBeVisible();
+  await expect(page.getByText("资产明细台账")).toBeVisible();
+  await expect(page.getByText("已关联周期账单 房贷")).toBeVisible();
+  await expect(page.getByText("手动交易待关联关系、差旅或账单来源")).toBeVisible();
   await expect(page.getByText("任务与确认中心")).toBeVisible();
   await expect(page.getByText("秘书时间线")).toBeVisible();
   await expect(page.getByText("待确认提醒：周明客户宴请").first()).toBeVisible();

@@ -99,6 +99,10 @@ import {
   buildDataAssetRemediationTasks,
   type DataAssetRemediationTask,
 } from "@/lib/liji/data-asset-remediation";
+import {
+  buildDataAssetLedger,
+  type DataAssetLedgerEntry,
+} from "@/lib/liji/data-asset-ledger";
 import type { EntitlementReport } from "@/lib/liji/entitlements";
 import {
   buildFeatureAcceptanceMatrix,
@@ -407,6 +411,18 @@ function assetStatusText(status: DataAssetItem["status"]) {
 function assetStatusVariant(status: DataAssetItem["status"]) {
   if (status === "healthy") return "secondary" as const;
   if (status === "attention") return "outline" as const;
+  return "destructive" as const;
+}
+
+function ledgerStatusText(status: DataAssetLedgerEntry["status"]) {
+  if (status === "linked") return "已入库";
+  if (status === "needs_action") return "待补齐";
+  return "阻塞";
+}
+
+function ledgerStatusVariant(status: DataAssetLedgerEntry["status"]) {
+  if (status === "linked") return "secondary" as const;
+  if (status === "needs_action") return "outline" as const;
   return "destructive" as const;
 }
 
@@ -1803,6 +1819,7 @@ function DashboardSection(props: {
     levelTwoCards: props.levelTwoCards,
   });
   const remediationTasks = buildDataAssetRemediationTasks(scopedData, 6);
+  const assetLedger = buildDataAssetLedger(scopedData, 12);
   const timeline = buildSecretaryTimeline(data, 8);
   const highConfidenceCaptures = pendingCaptures.filter((capture) => capture.parsed.confidence >= 0.75);
   const lowConfidenceCaptures = pendingCaptures.filter((capture) => capture.parsed.confidence < 0.65);
@@ -1997,26 +2014,11 @@ function DashboardSection(props: {
           <CardContent>
             <div className="flex flex-col gap-3">
               {commandCenter.dataAssets.items.map((asset) => (
-                <div key={asset.key} className="rounded-md border p-3">
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium">{asset.label}</span>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={assetStatusVariant(asset.status)}>{assetStatusText(asset.status)}</Badge>
-                      <Button
-                        size="xs"
-                        variant="ghost"
-                        aria-label={`补齐资产 ${asset.label}`}
-                        onClick={() => props.onNavigate(asset.section)}
-                      >
-                        {asset.status === "healthy" ? "查看" : "补齐"}
-                      </Button>
-                    </div>
-                  </div>
-                  <Progress value={Math.round((asset.owned / Math.max(1, asset.total)) * 100)}>
-                    <ProgressLabel>{asset.owned}/{asset.total}</ProgressLabel>
-                    <span className="ml-auto text-xs text-muted-foreground">{asset.gap}</span>
-                  </Progress>
-                </div>
+                <DataAssetHealthRow
+                  key={asset.key}
+                  asset={asset}
+                  onNavigate={props.onNavigate}
+                />
               ))}
             </div>
           </CardContent>
@@ -2033,6 +2035,8 @@ function DashboardSection(props: {
       <FeatureAcceptanceMatrixCard features={featureAcceptance} onAction={runFeatureAcceptanceAction} />
 
       <DataAssetRemediationCard tasks={remediationTasks} onAction={runRemediationTaskAction} />
+
+      <DataAssetLedgerCard entries={assetLedger} onNavigate={props.onNavigate} />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <MetricCard
@@ -2260,6 +2264,88 @@ function DashboardSection(props: {
         </Card>
       </div>
     </div>
+  );
+}
+
+function DataAssetHealthRow({
+  asset,
+  onNavigate,
+}: {
+  asset: DataAssetItem;
+  onNavigate: (section: SectionId) => void;
+}) {
+  const actionLabel = asset.status === "healthy" ? "查看资产" : "补齐资产";
+
+  return (
+    <div className="rounded-md border p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-sm font-medium">{asset.label}</span>
+        <div className="flex items-center gap-2">
+          <Badge variant={assetStatusVariant(asset.status)}>{assetStatusText(asset.status)}</Badge>
+          <Button
+            size="xs"
+            variant="ghost"
+            aria-label={`${actionLabel} ${asset.label}`}
+            onClick={() => onNavigate(asset.section)}
+          >
+            {asset.status === "healthy" ? "查看" : "补齐"}
+          </Button>
+        </div>
+      </div>
+      <Progress value={Math.round((asset.owned / Math.max(1, asset.total)) * 100)}>
+        <ProgressLabel>{asset.owned}/{asset.total}</ProgressLabel>
+        <span className="ml-auto text-xs text-muted-foreground">{asset.gap}</span>
+      </Progress>
+    </div>
+  );
+}
+
+function DataAssetLedgerCard({
+  entries,
+  onNavigate,
+}: {
+  entries: DataAssetLedgerEntry[];
+  onNavigate: (section: SectionId) => void;
+}) {
+  const openCount = entries.filter((entry) => entry.status !== "linked").length;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>资产明细台账</CardTitle>
+        <CardDescription>解释每条关系、日程、账单、履约和 AI 记忆为什么被计入资产分。</CardDescription>
+        <CardAction>
+          <Badge variant={openCount > 0 ? "outline" : "secondary"}>{openCount} 项待处理</Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2 2xl:grid-cols-3">
+          {entries.map((entry) => (
+            <div key={entry.id} className="flex min-h-32 flex-col justify-between rounded-lg border p-3">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline">{entry.assetKey}</Badge>
+                  <Badge variant={ledgerStatusVariant(entry.status)}>{ledgerStatusText(entry.status)}</Badge>
+                  <span className="text-xs text-muted-foreground">{entry.evidence}</span>
+                </div>
+                <div className="mt-2 font-medium">{entry.title}</div>
+                <p className="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground">{entry.detail}</p>
+              </div>
+              <Button
+                className="mt-3 w-fit"
+                size="sm"
+                variant="outline"
+                aria-label={`查看资产明细 ${entry.title}`}
+                onClick={() => onNavigate(entry.section)}
+              >
+                <SearchIcon data-icon="inline-start" />
+                {entry.cta}
+              </Button>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
