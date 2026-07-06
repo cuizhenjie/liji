@@ -2163,7 +2163,7 @@ function DashboardSection(props: {
       </div>
 
       <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[0.9fr_1.1fr]">
-        <AiContinuityCard report={commandCenter.aiContinuity} />
+        <AiContinuityCard report={commandCenter.aiContinuity} onAction={(section) => props.onNavigate(section)} />
         <ScenarioJourneyCard journeys={commandCenter.journeys} onAction={runScenarioJourneyAction} />
       </div>
 
@@ -2723,7 +2723,13 @@ function SecretaryTimelineCard({
   );
 }
 
-function AiContinuityCard({ report }: { report: AiContinuityReport }) {
+function AiContinuityCard({
+  report,
+  onAction,
+}: {
+  report: AiContinuityReport;
+  onAction: (section: SectionId) => void;
+}) {
   return (
     <Card>
       <CardHeader>
@@ -2754,10 +2760,28 @@ function AiContinuityCard({ report }: { report: AiContinuityReport }) {
               待关注
             </div>
             {report.interruptionRisks.length > 0 ? (
-              <div className="flex flex-col gap-1 text-sm leading-6 text-muted-foreground">
-                {report.interruptionRisks.map((risk) => (
-                  <span key={risk}>{risk}</span>
-                ))}
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-1 text-sm leading-6 text-muted-foreground">
+                  {report.interruptionRisks.map((risk) => (
+                    <span key={risk}>{risk}</span>
+                  ))}
+                </div>
+                {report.actions.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {report.actions.map((action) => (
+                      <Button
+                        key={action.id}
+                        size="sm"
+                        variant="outline"
+                        aria-label={`执行AI连续性动作 ${action.label}`}
+                        onClick={() => onAction(action.section)}
+                      >
+                        {action.id === "privacy_authorization" ? <ShieldCheckIcon data-icon="inline-start" /> : <CheckIcon data-icon="inline-start" />}
+                        {action.label}
+                      </Button>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="text-sm text-muted-foreground">当前链路稳定。</div>

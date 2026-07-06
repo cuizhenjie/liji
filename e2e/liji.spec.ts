@@ -109,6 +109,15 @@ test("executes scenario journey cards", async ({ page }) => {
   await expect(page.getByText("差旅方案已确认").first()).toBeVisible();
 });
 
+test("opens AI continuity recovery actions", async ({ page }) => {
+  await expect(page.getByText("AI 连续性")).toBeVisible();
+  await expect(page.getByText("云端模型未授权，已切换本地规则解析。")).toBeVisible();
+
+  await page.getByRole("button", { name: /执行AI连续性动作 打开授权中心/ }).click();
+  await expect(page.getByText("隐私与授权中心")).toBeVisible();
+  await expect(page.getByText("公网模型调用")).toBeVisible();
+});
+
 test("opens fulfillment and generates a travel plan", async ({ page }) => {
   await page.getByRole("button", { name: "履约", exact: true }).click();
   await page.getByRole("button", { name: /生成旅行方案/ }).click();

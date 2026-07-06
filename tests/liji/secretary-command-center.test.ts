@@ -130,6 +130,13 @@ describe("secretary command center", () => {
     expect(continuity.status).toBe("attention");
     expect(continuity.safeguards).toContain("本地规则兜底解析");
     expect(continuity.interruptionRisks.join(" ")).toContain("云端模型未授权");
+    expect(continuity.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "privacy_authorization", section: "privacy" }),
+        expect.objectContaining({ id: "confirm_queue", section: "dashboard" }),
+        expect.objectContaining({ id: "memory_review", section: "contacts" }),
+      ])
+    );
   });
 
   it("summarizes major assistant scenarios as measurable journeys", () => {

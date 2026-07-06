@@ -33,11 +33,19 @@ export type DataAssetReport = {
   nextAssetAction: string;
 };
 
+export type AiContinuityAction = {
+  id: "privacy_authorization" | "confirm_queue" | "memory_review";
+  label: string;
+  detail: string;
+  section: AssistantAction["section"];
+};
+
 export type AiContinuityReport = {
   mode: "cloud_assisted" | "local_guarded";
   status: AssetHealthStatus;
   safeguards: string[];
   interruptionRisks: string[];
+  actions: AiContinuityAction[];
 };
 
 export type ScenarioJourney = {
@@ -263,13 +271,43 @@ export function buildDataAssetReport(data: WorkspaceData): DataAssetReport {
 }
 
 export function buildAiContinuityReport(data: WorkspaceData): AiContinuityReport {
+  const pendingCaptures = data.captures.filter((capture) => capture.status === "pending");
+  const memoriesNeedingReview = reviewRequiredMemories(data);
   const risks = [
     data.privacy.cloudModelEnabled ? "" : "云端模型未授权，已切换本地规则解析。",
-    data.captures.filter((capture) => capture.status === "pending").length > 3
+    pendingCaptures.length > 3
       ? "待确认队列较长，可能影响 AI 记忆入库时效。"
       : "",
-    reviewRequiredMemories(data).length > 0 ? "存在需要复核的 AI 记忆。" : "",
+    memoriesNeedingReview.length > 0 ? "存在需要复核的 AI 记忆。" : "",
   ].filter(Boolean);
+  const actions: AiContinuityAction[] = [];
+
+  if (!data.privacy.cloudModelEnabled) {
+    actions.push({
+      id: "privacy_authorization",
+      label: "打开授权中心",
+      detail: "确认公网模型、PII 脱敏和通知通道开关。",
+      section: "privacy",
+    });
+  }
+
+  if (pendingCaptures.length > 3) {
+    actions.push({
+      id: "confirm_queue",
+      label: "处理确认队列",
+      detail: `${pendingCaptures.length} 条采集待确认，先入库再进入记忆。`,
+      section: "dashboard",
+    });
+  }
+
+  if (memoriesNeedingReview.length > 0) {
+    actions.push({
+      id: "memory_review",
+      label: "复核 AI 记忆",
+      detail: `${memoriesNeedingReview.length} 条记忆需要纠偏或重新确认。`,
+      section: "contacts",
+    });
+  }
 
   return {
     mode: data.privacy.cloudModelEnabled ? "cloud_assisted" : "local_guarded",
@@ -281,6 +319,7 @@ export function buildAiContinuityReport(data: WorkspaceData): AiContinuityReport
       "AI 记忆可纠偏复核",
     ],
     interruptionRisks: risks,
+    actions,
   };
 }
 
