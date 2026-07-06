@@ -1511,6 +1511,7 @@ export function LijiApp({ initialData }: LijiAppProps) {
                   onEditCapture={updateCaptureDraft}
                   onBirthdayPlan={generateBirthdayPlan}
                   onConfirmEvent={confirmEventRead}
+                  onConfirmPlan={confirmPlan}
                   onNavigate={setActiveSection}
                 />
               )}
@@ -1701,6 +1702,7 @@ function DashboardSection(props: {
   onEditCapture: (captureId: string, patch: Partial<CaptureItem["parsed"]>) => void;
   onBirthdayPlan: () => void;
   onConfirmEvent: (eventId: string) => void;
+  onConfirmPlan: (planId: string) => void;
   onNavigate: (section: SectionId) => void;
 }) {
   const { data, pendingCaptures, relationshipBudget } = props;
@@ -1734,6 +1736,33 @@ function DashboardSection(props: {
     }
 
     props.onNavigate(action.section);
+  }
+
+  function runFeatureAcceptanceAction(feature: FeatureAcceptanceItem) {
+    if (feature.id === "F202") {
+      const unconfirmedLevelOne = props.events.filter(
+        (event) => event.reminderLevel === "level_1" && event.status !== "confirmed"
+      );
+      if (unconfirmedLevelOne.length > 0) {
+        unconfirmedLevelOne.forEach((event) => props.onConfirmEvent(event.id));
+        return;
+      }
+    }
+
+    if (feature.id === "F301" || feature.id === "F302") {
+      const targetScenario = feature.id === "F301" ? "festival" : "travel";
+      const plan = props.plans.find((item) => item.scenario === targetScenario);
+      if (plan && plan.status !== "confirmed") {
+        props.onConfirmPlan(plan.id);
+        return;
+      }
+      if (feature.id === "F301" && !plan) {
+        props.onBirthdayPlan();
+        return;
+      }
+    }
+
+    props.onNavigate(feature.section);
   }
 
   return (
@@ -1814,7 +1843,7 @@ function DashboardSection(props: {
 
       <ScenarioAcceptanceCard scenarios={scenarioAcceptance} onNavigate={props.onNavigate} />
 
-      <FeatureAcceptanceMatrixCard features={featureAcceptance} onNavigate={props.onNavigate} />
+      <FeatureAcceptanceMatrixCard features={featureAcceptance} onAction={runFeatureAcceptanceAction} />
 
       <DataAssetRemediationCard tasks={remediationTasks} onNavigate={props.onNavigate} />
 
@@ -2150,10 +2179,10 @@ function ScenarioAcceptanceCard({
 
 function FeatureAcceptanceMatrixCard({
   features,
-  onNavigate,
+  onAction,
 }: {
   features: FeatureAcceptanceItem[];
-  onNavigate: (section: SectionId) => void;
+  onAction: (feature: FeatureAcceptanceItem) => void;
 }) {
   const openCount = features.filter((feature) => feature.status !== "accepted").length;
   const hasBlocked = features.some((feature) => feature.status === "blocked");
@@ -2195,7 +2224,7 @@ function FeatureAcceptanceMatrixCard({
                   ))}
                 </div>
               </div>
-              <Button className="mt-3 w-fit" size="sm" variant="outline" onClick={() => onNavigate(feature.section)}>
+              <Button className="mt-3 w-fit" size="sm" variant="outline" onClick={() => onAction(feature)}>
                 <ClipboardCheckIcon data-icon="inline-start" />
                 {feature.cta}
               </Button>

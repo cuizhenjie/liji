@@ -189,7 +189,7 @@ function f202FailsafeNotification(data: WorkspaceData): FeatureAcceptanceItem {
     label: "冗余预警机制",
     module: "智能日历",
     section: "calendar",
-    cta: "验收提醒",
+    cta: "确认红线提醒",
     evidence: `${levelOneEvents.length} 个 Level 1 · ${logsForLevelOne.length} 条日志`,
     checks,
   });
@@ -233,7 +233,7 @@ function f301FestivalFulfillment(data: WorkspaceData, levelTwoCards: LevelTwoRec
     label: "生日/节日消费拆解与履约",
     module: "履约引擎",
     section: "fulfillment",
-    cta: "验收生日履约",
+    cta: "确认生日方案",
     evidence: festivalPlan ? `${festivalPlan.budgetCny} 元 · ${festivalPlan.items.length} 项` : "未生成方案",
     checks,
   });
@@ -277,7 +277,7 @@ function f302TravelFulfillment(data: WorkspaceData): FeatureAcceptanceItem {
     label: "智能商务差旅规划",
     module: "履约引擎",
     section: "fulfillment",
-    cta: "验收差旅",
+    cta: "确认差旅方案",
     evidence: travelPlan ? `${travelPlan.budgetCny} 元 · ${travelPlan.items.length} 项` : "未生成方案",
     checks,
   });

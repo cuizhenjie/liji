@@ -24,6 +24,8 @@ test("captures and confirms a birthday event", async ({ page }) => {
   await expect(page.getByText("任务与确认中心")).toBeVisible();
   await expect(page.getByText("秘书时间线")).toBeVisible();
   await expect(page.getByText("待确认提醒：周明客户宴请").first()).toBeVisible();
+  await page.getByRole("button", { name: /确认红线提醒/ }).click();
+  await expect(page.getByText("已确认提醒，停止升级")).toBeVisible();
 
   await page.getByRole("button", { name: /快捷采集 客户宴请/ }).click();
   await expect(page.getByRole("button", { name: /确认采集 周明客户宴请/ })).toBeVisible();
@@ -115,7 +117,7 @@ test("shows operations readiness and high ROI controls", async ({ page }) => {
   await expect(page.getByRole("button", { name: /CPS 财务审批/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /告警处置日志/ })).toBeVisible();
   await expect(page.getByText("P0 上线动作")).toBeVisible();
-  await expect(page.getByText("上线任务包")).toBeVisible();
+  await expect(page.getByText("上线任务包", { exact: true })).toBeVisible();
   await expect(page.getByText("缺失环境变量")).toBeVisible();
   await expect(page.getByText("NEXT_PUBLIC_SUPABASE_URL", { exact: true })).toBeVisible();
   await expect(page.getByText("通知 SOP 与权益")).toBeVisible();
