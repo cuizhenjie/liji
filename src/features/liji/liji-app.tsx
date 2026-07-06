@@ -1579,6 +1579,7 @@ export function LijiApp({ initialData }: LijiAppProps) {
                   onArchiveMany={archiveCaptures}
                   onEditCapture={updateCaptureDraft}
                   onBirthdayPlan={generateBirthdayPlan}
+                  onTravelPlan={generateBusinessTravelPlan}
                   onConfirmEvent={confirmEventRead}
                   onConfirmPlan={confirmPlan}
                   onCorrectMemory={correctMemory}
@@ -1776,6 +1777,7 @@ function DashboardSection(props: {
   onArchiveMany: (captureIds: string[]) => void;
   onEditCapture: (captureId: string, patch: Partial<CaptureItem["parsed"]>) => void;
   onBirthdayPlan: (eventId?: string) => void;
+  onTravelPlan: () => void;
   onConfirmEvent: (eventId: string) => void;
   onConfirmPlan: (planId: string) => void;
   onCorrectMemory: (memoryId: string) => void;
@@ -1843,6 +1845,62 @@ function DashboardSection(props: {
     props.onNavigate(action.section);
   }
 
+  function runScenarioAcceptanceAction(scenario: ScenarioAcceptanceItem) {
+    if (scenario.id === "birthday_care") {
+      const birthdayEvent = props.events.find((event) => /生日|纪念日/.test(event.title));
+      const plan = props.plans.find((item) =>
+        item.scenario === "festival" &&
+        (!birthdayEvent || item.eventId === birthdayEvent.id || item.title.includes("生日"))
+      );
+
+      if (plan && plan.status !== "confirmed" && plan.status !== "bookmarked") {
+        props.onConfirmPlan(plan.id);
+        return;
+      }
+
+      if (!plan) {
+        props.onBirthdayPlan(birthdayEvent?.id);
+        return;
+      }
+    }
+
+    if (scenario.id === "client_hospitality") {
+      const event = props.events.find((item) => /宴请|客户|会议|会面/.test(item.title));
+      if (event && event.reminderLevel === "level_1" && event.status !== "confirmed" && event.status !== "done") {
+        props.onConfirmEvent(event.id);
+        return;
+      }
+    }
+
+    if (scenario.id === "travel_planning") {
+      const plan = props.plans.find((item) => item.scenario === "travel");
+      if (plan && plan.status !== "confirmed" && plan.status !== "bookmarked") {
+        props.onConfirmPlan(plan.id);
+        return;
+      }
+
+      if (!plan) {
+        props.onTravelPlan();
+        return;
+      }
+    }
+
+    if (scenario.id === "bill_recap") {
+      const event = props.events.find((item) =>
+        item.source === "bill" &&
+        item.reminderLevel === "level_1" &&
+        item.status !== "confirmed" &&
+        item.status !== "done"
+      );
+      if (event) {
+        props.onConfirmEvent(event.id);
+        return;
+      }
+    }
+
+    props.onNavigate(scenario.section);
+  }
+
   function runFeatureAcceptanceAction(feature: FeatureAcceptanceItem) {
     if (feature.id === "F202") {
       const unconfirmedLevelOne = props.events.filter(
@@ -1857,7 +1915,7 @@ function DashboardSection(props: {
     if (feature.id === "F301" || feature.id === "F302") {
       const targetScenario = feature.id === "F301" ? "festival" : "travel";
       const plan = props.plans.find((item) => item.scenario === targetScenario);
-      if (plan && plan.status !== "confirmed") {
+      if (plan && plan.status !== "confirmed" && plan.status !== "bookmarked") {
         props.onConfirmPlan(plan.id);
         return;
       }
@@ -1868,6 +1926,24 @@ function DashboardSection(props: {
     }
 
     props.onNavigate(feature.section);
+  }
+
+  function runRemediationTaskAction(task: DataAssetRemediationTask) {
+    if (task.id.startsWith("memory:")) {
+      props.onCorrectMemory(task.id.replace("memory:", ""));
+      return;
+    }
+
+    if (task.id.startsWith("fulfillment:")) {
+      const planId = task.id.replace("fulfillment:", "");
+      const plan = props.plans.find((item) => item.id === planId);
+      if (plan && plan.status !== "confirmed" && plan.status !== "bookmarked") {
+        props.onConfirmPlan(plan.id);
+        return;
+      }
+    }
+
+    props.onNavigate(task.section);
   }
 
   return (
@@ -1952,11 +2028,11 @@ function DashboardSection(props: {
         <ScenarioJourneyCard journeys={commandCenter.journeys} onNavigate={props.onNavigate} />
       </div>
 
-      <ScenarioAcceptanceCard scenarios={scenarioAcceptance} onNavigate={props.onNavigate} />
+      <ScenarioAcceptanceCard scenarios={scenarioAcceptance} onAction={runScenarioAcceptanceAction} />
 
       <FeatureAcceptanceMatrixCard features={featureAcceptance} onAction={runFeatureAcceptanceAction} />
 
-      <DataAssetRemediationCard tasks={remediationTasks} onNavigate={props.onNavigate} />
+      <DataAssetRemediationCard tasks={remediationTasks} onAction={runRemediationTaskAction} />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <MetricCard
@@ -2189,10 +2265,10 @@ function DashboardSection(props: {
 
 function DataAssetRemediationCard({
   tasks,
-  onNavigate,
+  onAction,
 }: {
   tasks: DataAssetRemediationTask[];
-  onNavigate: (section: SectionId) => void;
+  onAction: (task: DataAssetRemediationTask) => void;
 }) {
   return (
     <Card>
@@ -2223,7 +2299,13 @@ function DataAssetRemediationCard({
                   <div className="mt-2 font-medium">{task.title}</div>
                   <p className="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground">{task.detail}</p>
                 </div>
-                <Button className="mt-3 w-fit" size="sm" variant="outline" onClick={() => onNavigate(task.section)}>
+                <Button
+                  className="mt-3 w-fit"
+                  size="sm"
+                  variant="outline"
+                  aria-label={`执行资产补齐 ${task.title}`}
+                  onClick={() => onAction(task)}
+                >
                   <ClipboardCheckIcon data-icon="inline-start" />
                   {task.cta}
                 </Button>
@@ -2238,10 +2320,10 @@ function DataAssetRemediationCard({
 
 function ScenarioAcceptanceCard({
   scenarios,
-  onNavigate,
+  onAction,
 }: {
   scenarios: ScenarioAcceptanceItem[];
-  onNavigate: (section: SectionId) => void;
+  onAction: (scenario: ScenarioAcceptanceItem) => void;
 }) {
   return (
     <Card>
@@ -2276,7 +2358,13 @@ function ScenarioAcceptanceCard({
                   </Badge>
                 ))}
               </div>
-              <Button className="mt-3" size="sm" variant="outline" onClick={() => onNavigate(scenario.section)}>
+              <Button
+                className="mt-3"
+                size="sm"
+                variant="outline"
+                aria-label={`执行场景验收 ${scenario.label}`}
+                onClick={() => onAction(scenario)}
+              >
                 <ListChecksIcon data-icon="inline-start" />
                 {scenario.cta}
               </Button>

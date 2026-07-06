@@ -52,6 +52,21 @@ test("captures and confirms a birthday event", async ({ page }) => {
   await expect(page.getByText("已确认并写入工作区")).toBeVisible();
 });
 
+test("runs dashboard scenario and asset remediation actions", async ({ page }) => {
+  await expect(page.getByText("场景验收作战室")).toBeVisible();
+  await page.getByRole("button", { name: /执行场景验收 客户宴请/ }).click();
+
+  await expect(page.getByText("已确认提醒，停止升级")).toBeVisible();
+  await expect(page.getByText("客户宴请链路已通过红线检查。")).toBeVisible();
+
+  await page.getByRole("button", { name: /执行场景验收 商务差旅/ }).click();
+  await expect(page.getByText("方案已确认", { exact: true })).toBeVisible();
+  await expect(page.getByText("差旅方案已可进入外部平台预订。")).toBeVisible();
+
+  await page.getByRole("button", { name: /执行资产补齐 确认履约方案：李小满5岁生日履约方案/ }).click();
+  await expect(page.getByText("生日关怀链路已可执行。")).toBeVisible();
+});
+
 test("opens fulfillment and generates a travel plan", async ({ page }) => {
   await page.getByRole("button", { name: "履约", exact: true }).click();
   await page.getByRole("button", { name: /生成旅行方案/ }).click();
