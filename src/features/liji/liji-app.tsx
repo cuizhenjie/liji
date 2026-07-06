@@ -2022,9 +2022,32 @@ function DashboardSection(props: {
   }
 
   function runFeatureAcceptanceAction(feature: FeatureAcceptanceItem) {
+    if (feature.id === "F101") {
+      const reviewMemory = data.aiMemories.find((memory) =>
+        memory.reviewStatus === "review_required" || memory.reviewStatus === "stale"
+      );
+      if (reviewMemory) {
+        props.onCorrectMemory(reviewMemory.id);
+        return;
+      }
+    }
+
+    if (feature.id === "F201") {
+      if (highConfidenceCaptures.length > 0) {
+        props.onConfirmMany(highConfidenceCaptures);
+        return;
+      }
+
+      if (lowConfidenceCaptures.length > 0) {
+        toast("低置信采集需要先编辑确认");
+        props.onNavigate("dashboard");
+        return;
+      }
+    }
+
     if (feature.id === "F202") {
       const unconfirmedLevelOne = props.events.filter(
-        (event) => event.reminderLevel === "level_1" && event.status !== "confirmed"
+        (event) => event.reminderLevel === "level_1" && event.status !== "confirmed" && event.status !== "done"
       );
       if (unconfirmedLevelOne.length > 0) {
         unconfirmedLevelOne.forEach((event) => props.onConfirmEvent(event.id));
@@ -2041,6 +2064,29 @@ function DashboardSection(props: {
       }
       if (feature.id === "F301" && !plan) {
         props.onBirthdayPlan();
+        return;
+      }
+      if (feature.id === "F302" && !plan) {
+        props.onTravelPlan();
+        return;
+      }
+    }
+
+    if (feature.id === "F401") {
+      const billCaptures = highConfidenceCaptures.filter((capture) => capture.parsed.intent === "bill");
+      if (billCaptures.length > 0) {
+        props.onConfirmMany(billCaptures);
+        return;
+      }
+
+      const billEvent = props.events.find((event) =>
+        event.source === "bill" &&
+        event.reminderLevel === "level_1" &&
+        event.status !== "confirmed" &&
+        event.status !== "done"
+      );
+      if (billEvent) {
+        props.onConfirmEvent(billEvent.id);
         return;
       }
     }
@@ -2688,7 +2734,13 @@ function FeatureAcceptanceMatrixCard({
                   ))}
                 </div>
               </div>
-              <Button className="mt-3 w-fit" size="sm" variant="outline" onClick={() => onAction(feature)}>
+              <Button
+                className="mt-3 w-fit"
+                size="sm"
+                variant="outline"
+                aria-label={`执行功能验收 ${feature.id} ${feature.label} ${feature.cta}`}
+                onClick={() => onAction(feature)}
+              >
                 <ClipboardCheckIcon data-icon="inline-start" />
                 {feature.cta}
               </Button>

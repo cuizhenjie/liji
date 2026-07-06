@@ -77,6 +77,23 @@ test("executes data asset health actions", async ({ page }) => {
   await expect(page.getByText("方案已确认", { exact: true })).toBeVisible();
 });
 
+test("executes feature acceptance matrix actions", async ({ page }) => {
+  await expect(page.getByText("功能验收矩阵")).toBeVisible();
+
+  await page.getByRole("button", { name: /执行功能验收 F301 生日\/节日消费拆解与履约/ }).click();
+  await expect(page.getByText("方案已确认", { exact: true })).toBeVisible();
+  await expect(page.getByText("生日关怀链路已可执行。")).toBeVisible();
+
+  await page.getByRole("button", { name: /快捷采集 客户宴请/ }).click();
+  await expect(page.getByRole("button", { name: /确认采集 周明客户宴请/ })).toBeVisible();
+  await page.getByRole("button", { name: /执行功能验收 F201 智能日程自然语言录入/ }).click();
+  await expect(page.getByText("已批量确认 1 项")).toBeVisible();
+
+  await page.getByRole("button", { name: /执行功能验收 F202 冗余预警机制/ }).click();
+  await expect(page.getByText("已确认提醒，停止升级").first()).toBeVisible();
+  await expect(page.getByText("F202 · 冗余预警机制")).toBeVisible();
+});
+
 test("executes pending secretary timeline actions", async ({ page }) => {
   await expect(page.getByText("秘书时间线")).toBeVisible();
 
