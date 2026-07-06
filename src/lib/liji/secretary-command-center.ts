@@ -1,3 +1,4 @@
+import { isEventLinkedToDataAsset } from "./data-asset-links";
 import type { LevelTwoRecommendationCard } from "./level2-recommendations";
 import type { WorkspaceData } from "./types";
 
@@ -193,7 +194,7 @@ export function buildAssistantActions(params: {
 export function buildDataAssetReport(data: WorkspaceData): DataAssetReport {
   const contactsWithPreferences = data.contacts.filter((contact) => contact.preferences.length > 0).length;
   const contactsWithCompliance = data.contacts.filter((contact) => contact.compliance.policyNote).length;
-  const eventsWithContacts = data.events.filter((event) => event.contactId).length;
+  const linkedScheduleAssets = data.events.filter((event) => isEventLinkedToDataAsset(data, event)).length;
   const transactionsLinked = data.transactions.filter((transaction) => transaction.contactId || transaction.source !== "manual").length;
   const reviewedMemories = data.aiMemories.filter((memory) =>
     memory.reviewStatus === "healthy" || memory.reviewStatus === undefined
@@ -212,10 +213,10 @@ export function buildDataAssetReport(data: WorkspaceData): DataAssetReport {
     dataAssetItem({
       key: "schedule",
       label: "日程资产",
-      owned: eventsWithContacts,
+      owned: linkedScheduleAssets,
       total: Math.max(1, data.events.length),
       section: "calendar",
-      gap: "把重要日程绑定到联系人。",
+      gap: "把重要日程绑定到联系人或账单。",
     }),
     dataAssetItem({
       key: "finance",

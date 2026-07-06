@@ -18,7 +18,8 @@ test("captures and confirms a birthday event", async ({ page }) => {
   await expect(page.getByText("F202 · 冗余预警机制")).toBeVisible();
   await expect(page.getByText("客户宴请").first()).toBeVisible();
   await expect(page.getByText("资产补齐任务包")).toBeVisible();
-  await expect(page.getByText("关联日程：房贷扣款").first()).toBeVisible();
+  await expect(page.getByText("关联日程：房贷扣款")).toHaveCount(0);
+  await expect(page.getByText("关联交易：上海差旅").first()).toBeVisible();
   await expect(page.getByRole("button", { name: /补齐资产 日程资产/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /补齐资产 合规资产/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /补齐资产 履约资产/ })).toBeVisible();

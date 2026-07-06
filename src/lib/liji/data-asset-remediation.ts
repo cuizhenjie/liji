@@ -1,3 +1,4 @@
+import { isEventLinkedToDataAsset } from "./data-asset-links";
 import type { DataAssetItem } from "./secretary-command-center";
 import type { CalendarEvent, Contact, FulfillmentPlan, Transaction, WorkspaceData } from "./types";
 
@@ -50,7 +51,7 @@ function complianceTasks(data: WorkspaceData): DataAssetRemediationTask[] {
 
 function scheduleTasks(data: WorkspaceData): DataAssetRemediationTask[] {
   return data.events
-    .filter((event) => !event.contactId)
+    .filter((event) => !isEventLinkedToDataAsset(data, event))
     .slice(0, 4)
     .map((event: CalendarEvent) => ({
       id: `schedule:${event.id}`,

@@ -4,13 +4,26 @@ import { buildDataAssetRemediationTasks } from "../../src/lib/liji/data-asset-re
 import { demoWorkspace } from "../../src/lib/liji/sample-data";
 
 describe("data asset remediation", () => {
-  it("turns unlinked schedule, finance and fulfillment gaps into tasks", () => {
+  it("does not ask users to relink bill events that are already backed by recurring bills", () => {
     const tasks = buildDataAssetRemediationTasks(demoWorkspace);
 
-    expect(tasks.some((task) => task.assetKey === "schedule" && task.cta === "关联账单")).toBe(true);
+    expect(tasks.some((task) => task.title === "关联日程：房贷扣款")).toBe(false);
     expect(tasks.some((task) => task.assetKey === "finance" && task.title.includes("上海差旅"))).toBe(true);
     expect(tasks.some((task) => task.assetKey === "fulfillment" && task.cta === "确认方案")).toBe(true);
     expect(tasks.every((task) => task.section)).toBe(true);
+  });
+
+  it("keeps bill schedule remediation when the recurring bill asset is missing", () => {
+    const tasks = buildDataAssetRemediationTasks({
+      ...demoWorkspace,
+      recurringBills: [],
+    });
+
+    expect(tasks.some((task) => task.assetKey === "schedule" && task.cta === "关联账单")).toBe(true);
+    expect(tasks.find((task) => task.title === "关联日程：房贷扣款")).toMatchObject({
+      assetKey: "schedule",
+      section: "finance",
+    });
   });
 
   it("prioritizes stale memory and high-risk compliance gaps", () => {

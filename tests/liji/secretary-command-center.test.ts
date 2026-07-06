@@ -60,6 +60,13 @@ describe("secretary command center", () => {
   });
 
   it("turns relationship, finance and memory coverage into an asset health report", () => {
+    const healthyReport = buildDataAssetReport(demoWorkspace);
+    expect(healthyReport.items.find((item) => item.key === "schedule")).toMatchObject({
+      owned: 3,
+      total: 3,
+      status: "healthy",
+    });
+
     const report = buildDataAssetReport({
       ...demoWorkspace,
       contacts: demoWorkspace.contacts.map((contact, index) =>
