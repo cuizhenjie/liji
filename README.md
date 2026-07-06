@@ -56,6 +56,7 @@ npx playwright install chromium webkit
 - 采集附件：截图、语音、账单附件可上传到 Supabase Storage，生成短期 signed URL 写入 `input_uri` 供 OCR/ASR provider 拉取。
 - 差旅报价：差旅方案支持交通/酒店候选报价、预算内择优、超预算提示和替代方案建议。
 - 记忆复核：AI 记忆支持用户编辑后复核为 healthy，云端复核会自动关闭对应 `ops_alerts`。
+- 偏好入库：AI 记忆可生成待确认偏好建议，用户确认后写入 VIP 偏好矩阵，避免错误记忆自动污染关系资产。
 - 通知对账：短信/语音日志保存阿里云 RequestId 与 BizId/CallId，`/api/notification-receipts/run` 可轮询回执并更新 provider 状态。
 - 回执推送：`/api/notification-receipts/push` 可接收阿里云 SMS HTTP 批量推送、MNS 消费转发和 VoiceReport，按 BizId/CallId 幂等更新投递日志。
 - 手机号路由：隐私中心可保存用户级通知手机号，短信/语音发送、Level 1 升级和回执轮询优先按用户手机号路由。

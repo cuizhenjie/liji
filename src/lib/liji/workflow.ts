@@ -1,4 +1,5 @@
 import { createUuid } from "./ids";
+import type { PreferenceSuggestion } from "./preference-suggestions";
 import type {
   AiMemory,
   CalendarEvent,
@@ -204,4 +205,44 @@ export function acknowledgeNotificationLog(
       log.id === logId ? { ...log, status: "confirmed", acknowledgedAt } : log
     ),
   };
+}
+
+export function applyPreferenceSuggestion(
+  data: WorkspaceData,
+  suggestion: PreferenceSuggestion,
+  now = new Date("2026-07-01T09:00:00+08:00")
+): WorkspaceData {
+  const contact = data.contacts.find((item) => item.id === suggestion.contactId);
+  if (!contact) return data;
+
+  const exists = contact.preferences.some((preference) => preference.label === suggestion.label);
+  const contacts = data.contacts.map((item) =>
+    item.id === suggestion.contactId && !exists
+      ? {
+          ...item,
+          preferences: [
+            ...item.preferences,
+            {
+              category: suggestion.category,
+              label: suggestion.label,
+              source: "ai" as const,
+              confidence: suggestion.confidence,
+            },
+          ],
+          aiMemoryHealth: Math.min(100, item.aiMemoryHealth + 4),
+        }
+      : item
+  );
+  const aiMemories = data.aiMemories.map((memory) =>
+    memory.id === suggestion.memoryId
+      ? {
+          ...memory,
+          reviewStatus: "healthy" as const,
+          reviewedAt: now.toISOString(),
+          correctedAt: memory.correctedAt ?? now.toISOString(),
+        }
+      : memory
+  );
+
+  return { ...data, contacts, aiMemories };
 }

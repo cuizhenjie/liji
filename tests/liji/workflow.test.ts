@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { parseNaturalLanguageInput } from "../../src/lib/liji/parser";
+import { buildPreferenceSuggestions } from "../../src/lib/liji/preference-suggestions";
 import { demoContacts, demoWorkspace } from "../../src/lib/liji/sample-data";
 import {
   acknowledgeEvent,
@@ -9,6 +10,7 @@ import {
   archiveCapture,
   archiveCaptures,
   applyConfirmedCapture,
+  applyPreferenceSuggestion,
   rejectCapture,
   setPlanStatus,
 } from "../../src/lib/liji/workflow";
@@ -93,5 +95,24 @@ describe("business workflow", () => {
 
     expect(acknowledgedEvent.events.find((event) => event.id === eventId)?.status).toBe("confirmed");
     expect(acknowledgedLog.notificationLogs[0].status).toBe("confirmed");
+  });
+
+  it("applies a reviewed AI memory suggestion into the VIP preference matrix", () => {
+    const [suggestion] = buildPreferenceSuggestions(demoWorkspace);
+    const next = applyPreferenceSuggestion(demoWorkspace, suggestion);
+    const contact = next.contacts.find((item) => item.id === suggestion.contactId);
+    const memory = next.aiMemories.find((item) => item.id === suggestion.memoryId);
+
+    expect(contact?.preferences).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: "food",
+          label: "安静包间",
+          source: "ai",
+        }),
+      ])
+    );
+    expect(memory?.reviewStatus).toBe("healthy");
+    expect(memory?.reviewedAt).toBe("2026-07-01T01:00:00.000Z");
   });
 });

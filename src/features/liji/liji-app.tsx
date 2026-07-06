@@ -129,6 +129,10 @@ import {
   saveWorkspaceData,
 } from "@/lib/liji/persistence";
 import { parseNaturalLanguageInput } from "@/lib/liji/parser";
+import {
+  buildPreferenceSuggestions,
+  type PreferenceSuggestion,
+} from "@/lib/liji/preference-suggestions";
 import { createDeletionRequest, exportWorkspaceData } from "@/lib/liji/privacy";
 import { registerBrowserPushSubscription } from "@/lib/liji/push";
 import type { NativeBridgeCapability } from "@/lib/liji/native-bridge";
@@ -160,6 +164,7 @@ import type { TravelPreference } from "@/lib/liji/travel-options";
 import {
   acknowledgeEvent,
   acknowledgeNotificationLog,
+  applyPreferenceSuggestion,
   applyConfirmedCapture,
   applyConfirmedCaptures,
   archiveCapture as archiveCaptureWorkflow,
@@ -297,6 +302,18 @@ function captureSourceLabel(source: CaptureItem["sourceType"] | undefined) {
   };
 
   return map[source ?? "text"];
+}
+
+function preferenceCategoryText(category: PreferenceSuggestion["category"]) {
+  const map: Record<PreferenceSuggestion["category"], string> = {
+    food: "餐饮",
+    gift: "礼赠",
+    hobby: "兴趣",
+    avoid: "避雷",
+    travel: "差旅",
+  };
+
+  return map[category];
 }
 
 function identityLabel(mode: IdentityMode) {
@@ -1391,6 +1408,11 @@ export function LijiApp({ initialData }: LijiAppProps) {
     }));
   }
 
+  function confirmPreferenceSuggestion(suggestion: PreferenceSuggestion) {
+    workspace.setData((current) => applyPreferenceSuggestion(current, suggestion));
+    toast.success("偏好已写入画像");
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="flex min-h-screen">
@@ -1550,6 +1572,7 @@ export function LijiApp({ initialData }: LijiAppProps) {
                   onSelectContact={setSelectedContactId}
                   onCorrectMemory={correctMemory}
                   onUpdateMemory={updateMemoryContent}
+                  onConfirmPreferenceSuggestion={confirmPreferenceSuggestion}
                   memoryReviewPending={isPending}
                 />
               )}
@@ -2411,9 +2434,18 @@ function ContactsSection(props: {
   onSelectContact: (id: string) => void;
   onCorrectMemory: (id: string) => void;
   onUpdateMemory: (id: string, content: string) => void;
+  onConfirmPreferenceSuggestion: (suggestion: PreferenceSuggestion) => void;
   memoryReviewPending: boolean;
 }) {
   const selectedContact = props.contacts.find((contact) => contact.id === props.selectedContactId);
+  const visibleContactIds = new Set(props.contacts.map((contact) => contact.id));
+  const preferenceSuggestions = buildPreferenceSuggestions(props.data)
+    .filter((suggestion) => visibleContactIds.has(suggestion.contactId))
+    .sort((left, right) => {
+      if (left.contactId === props.selectedContactId) return -1;
+      if (right.contactId === props.selectedContactId) return 1;
+      return right.confidence - left.confidence;
+    });
   const contactEvents = selectedContact
     ? props.events.filter((event) => event.contactId === selectedContact.id)
     : [];
@@ -2506,6 +2538,53 @@ function ContactsSection(props: {
                     </div>
                   </div>
                 </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <CardTitle>偏好入库建议</CardTitle>
+                <CardDescription>AI 记忆先生成建议，确认后才写入 VIP 偏好矩阵。</CardDescription>
+              </div>
+              <Badge variant="secondary">{preferenceSuggestions.length}</Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {preferenceSuggestions.length === 0 ? (
+              <EmptyLine title="暂无偏好建议" detail="新的聊天、截图或账单记忆确认后会出现在这里。" />
+            ) : (
+              <div className="flex flex-col gap-3">
+                {preferenceSuggestions.slice(0, 5).map((suggestion) => (
+                  <div key={suggestion.id} className="rounded-lg border p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-medium">
+                          {suggestion.contactName} · {suggestion.label}
+                        </div>
+                        <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                          {suggestion.evidence}
+                        </p>
+                      </div>
+                      <Badge variant="outline">{preferenceCategoryText(suggestion.category)}</Badge>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-3 text-sm text-muted-foreground">
+                      <span>置信度 {Math.round(suggestion.confidence * 100)}%</span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        aria-label={`写入偏好 ${suggestion.contactName} ${suggestion.label}`}
+                        onClick={() => props.onConfirmPreferenceSuggestion(suggestion)}
+                      >
+                        <CheckIcon data-icon="inline-start" />
+                        写入偏好
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </CardContent>
