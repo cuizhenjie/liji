@@ -208,6 +208,13 @@ import type {
   Transaction,
   WorkspaceData,
 } from "@/lib/liji/types";
+import {
+  DataFlowVisualization,
+  ReminderTimeline,
+  BudgetDashboard,
+  ComplianceDashboard,
+  RelationshipHeatmap,
+} from "./analytics-components";
 
 type SectionId =
   | "dashboard"
@@ -2654,6 +2661,59 @@ function DashboardSection(props: {
           </CardContent>
         </Card>
       </div>
+
+      {/* Analytics Dashboard */}
+      <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
+        <DataFlowVisualization
+          title="数据流追踪"
+          steps={[
+            { id: "1", label: "采集", status: "completed", timestamp: "刚刚", details: "语音/文字/截图" },
+            { id: "2", label: "AI解析", status: "completed", timestamp: "1秒", details: "意图识别+PII脱敏" },
+            { id: "3", label: "确认", status: "active", details: "用户审核" },
+            { id: "4", label: "日程", status: "pending", details: "写入日历" },
+            { id: "5", label: "提醒", status: "pending", details: "多级提醒" },
+            { id: "6", label: "履约", status: "pending", details: "跳转执行" },
+          ]}
+        />
+        <ReminderTimeline
+          title="提醒时间轴"
+          events={[
+            { id: "1", title: "女儿生日", contactName: "女儿", date: "2026-07-10", daysUntil: 7, level: "urgent", channel: "push" },
+            { id: "2", title: "客户宴请", contactName: "张总", date: "2026-07-18", daysUntil: 15, level: "warning", channel: "sms" },
+            { id: "3", title: "父亲生日", contactName: "父亲", date: "2026-08-01", daysUntil: 30, level: "info", channel: "push" },
+          ]}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
+        <BudgetDashboard
+          totalBudget={relationshipBudget?.totalCny ?? 10000}
+          totalSpent={relationshipBudget?.spentCny ?? 3200}
+          categories={[
+            { name: "礼品", spent: 1800, budget: 3000, color: "#3b82f6" },
+            { name: "餐饮", spent: 1200, budget: 2000, color: "#f59e0b" },
+            { name: "出行", spent: 200, budget: 1000, color: "#10b981" },
+          ]}
+        />
+        <ComplianceDashboard
+          overallScore={92}
+          metrics={[
+            { label: "合规遵从率", value: 92, target: 95, status: "warning" },
+            { label: "风险事件", value: 1, target: 0, status: "warning" },
+            { label: "限额使用", value: 68, target: 100, status: "good" },
+          ]}
+        />
+      </div>
+
+      <RelationshipHeatmap
+        title="人情热力图"
+        contacts={props.contacts.slice(0, 8).map((c, i) => ({
+          name: c.name,
+          interactions: 10 - i,
+          lastContact: i === 0 ? "今天" : `${i * 3}天前`,
+          relationship: c.relation === "family" ? "family" as const : c.relation === "business" ? "business" as const : "social" as const,
+        }))}
+      />
     </div>
   );
 }

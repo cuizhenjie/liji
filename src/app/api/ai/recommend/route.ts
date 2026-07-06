@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
+import { streamLLMResponse, getConfiguredProvider, type LLMMessage } from "@/lib/liji/llm-service";
 
 // LLM streaming recommendation API
 // This endpoint uses Server-Sent Events (SSE) to stream recommendation results
+// When OPENAI_API_KEY or ANTHROPIC_API_KEY is configured, it uses real LLM
+// Otherwise, it falls back to mock implementation
 
 interface RecommendRequest {
   contactName: string;
@@ -26,9 +29,83 @@ interface RecommendationChunk {
   data?: Record<string, unknown>;
 }
 
-// Simulate LLM streaming response
-// In production, this would call an actual LLM API (OpenAI, Claude, etc.)
-async function* generateRecommendationStream(req: RecommendRequest): AsyncGenerator<RecommendationChunk> {
+// Check if real LLM is available
+function isLLMAvailable(): boolean {
+  return getConfiguredProvider() !== "mock";
+}
+
+// Generate recommendation using real LLM
+async function* generateLLMRecommendationStream(req: RecommendRequest): AsyncGenerator<RecommendationChunk> {
+  yield {
+    type: "thinking",
+    content: `正在使用 AI 为 ${req.contactName} 的${formatOccasion(req.occasion)}生成个性化方案...`,
+  };
+
+  const messages: LLMMessage[] = [
+    {
+      role: "system",
+      content: `你是礼记 AI 助手，一个专业的私人秘书系统。你需要根据用户的需求提供礼品推荐、问候语生成和行动建议。
+
+用户信息：
+- 联系人：${req.contactName}
+- 关系标签：${req.contactTags?.join(", ") || "无"}
+- 场合：${formatOccasion(req.occasion)}
+- 预算：¥${req.budget}
+
+请提供：
+1. 3个礼品推荐方案（包含名称、价格区间、购买平台、推荐理由）
+2. 一段个性化的问候语
+3. 建议的行动清单
+
+输出格式要清晰，使用 Markdown 格式。`,
+    },
+    {
+      role: "user",
+      content: `请为${req.contactName}的${formatOccasion(req.occasion)}推荐礼品和生成问候语。预算¥${req.budget}。`,
+    },
+  ];
+
+  let fullResponse = "";
+
+  for await (const chunk of streamLLMResponse(messages, { temperature: 0.7, maxTokens: 1500 })) {
+    if (chunk.type === "text" && chunk.content) {
+      fullResponse += chunk.content;
+      
+      // Yield intermediate content as suggestions
+      if (fullResponse.length % 100 < chunk.content.length) {
+        yield {
+          type: "suggestion",
+          content: chunk.content,
+        };
+      }
+    } else if (chunk.type === "error") {
+      yield {
+        type: "error",
+        content: chunk.error || "LLM 调用失败",
+      };
+      return;
+    }
+  }
+
+  // Compliance check
+  const isBusiness = req.contactTags?.some((t) => ["国企高管", "重要客户", "上市公司高管"].includes(t)) ?? false;
+  yield {
+    type: "compliance",
+    content: isBusiness
+      ? `检测到商务关系，请注意合规限额。`
+      : `无商务合规限制。`,
+    data: { isBusiness },
+  };
+
+  yield {
+    type: "complete",
+    content: "AI 推荐方案生成完成。",
+    data: { usedLLM: true, provider: getConfiguredProvider() },
+  };
+}
+
+// Mock implementation for when LLM is not available
+async function* generateMockRecommendationStream(req: RecommendRequest): AsyncGenerator<RecommendationChunk> {
   // Step 1: Thinking phase
   yield {
     type: "thinking",
@@ -181,12 +258,17 @@ export async function POST(request: Request) {
       );
     }
 
+    // Choose stream generator based on LLM availability
+    const streamGenerator = isLLMAvailable()
+      ? generateLLMRecommendationStream(body)
+      : generateMockRecommendationStream(body);
+
     // Create a ReadableStream for SSE
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          for await (const chunk of generateRecommendationStream(body)) {
+          for await (const chunk of streamGenerator) {
             const data = `data: ${JSON.stringify(chunk)}\n\n`;
             controller.enqueue(encoder.encode(data));
           }
