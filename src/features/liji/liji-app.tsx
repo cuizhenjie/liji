@@ -101,6 +101,10 @@ import {
 } from "@/lib/liji/data-asset-remediation";
 import type { EntitlementReport } from "@/lib/liji/entitlements";
 import {
+  buildFeatureAcceptanceMatrix,
+  type FeatureAcceptanceItem,
+} from "@/lib/liji/feature-acceptance";
+import {
   addRecurringBill as addRecurringBillToWorkspace,
   addTransaction as addTransactionToWorkspace,
   updateBudgetTotal,
@@ -402,6 +406,18 @@ function scenarioAcceptanceStatusText(status: ScenarioAcceptanceItem["status"]) 
 
 function scenarioAcceptanceStatusVariant(status: ScenarioAcceptanceItem["status"]) {
   if (status === "ready") return "secondary" as const;
+  if (status === "blocked") return "destructive" as const;
+  return "outline" as const;
+}
+
+function featureAcceptanceStatusText(status: FeatureAcceptanceItem["status"]) {
+  if (status === "accepted") return "验收通过";
+  if (status === "blocked") return "阻塞";
+  return "待验收";
+}
+
+function featureAcceptanceStatusVariant(status: FeatureAcceptanceItem["status"]) {
+  if (status === "accepted") return "secondary" as const;
   if (status === "blocked") return "destructive" as const;
   return "outline" as const;
 }
@@ -1702,6 +1718,10 @@ function DashboardSection(props: {
     data: scopedData,
     levelTwoCards: props.levelTwoCards,
   });
+  const featureAcceptance = buildFeatureAcceptanceMatrix({
+    data: scopedData,
+    levelTwoCards: props.levelTwoCards,
+  });
   const remediationTasks = buildDataAssetRemediationTasks(scopedData, 6);
   const timeline = buildSecretaryTimeline(data, 8);
   const highConfidenceCaptures = pendingCaptures.filter((capture) => capture.parsed.confidence >= 0.75);
@@ -1793,6 +1813,8 @@ function DashboardSection(props: {
       </div>
 
       <ScenarioAcceptanceCard scenarios={scenarioAcceptance} onNavigate={props.onNavigate} />
+
+      <FeatureAcceptanceMatrixCard features={featureAcceptance} onNavigate={props.onNavigate} />
 
       <DataAssetRemediationCard tasks={remediationTasks} onNavigate={props.onNavigate} />
 
@@ -2117,6 +2139,65 @@ function ScenarioAcceptanceCard({
               <Button className="mt-3" size="sm" variant="outline" onClick={() => onNavigate(scenario.section)}>
                 <ListChecksIcon data-icon="inline-start" />
                 {scenario.cta}
+              </Button>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function FeatureAcceptanceMatrixCard({
+  features,
+  onNavigate,
+}: {
+  features: FeatureAcceptanceItem[];
+  onNavigate: (section: SectionId) => void;
+}) {
+  const openCount = features.filter((feature) => feature.status !== "accepted").length;
+  const hasBlocked = features.some((feature) => feature.status === "blocked");
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>功能验收矩阵</CardTitle>
+        <CardDescription>对照需求功能 ID 自动检查秘书能力、数据资产和确认闭环。</CardDescription>
+        <CardAction>
+          <Badge variant={hasBlocked ? "destructive" : openCount > 0 ? "outline" : "secondary"}>
+            {openCount} 项待验收
+          </Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+          {features.map((feature) => (
+            <div key={feature.id} className="flex min-h-48 flex-col justify-between rounded-lg border p-3">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline">{feature.id}</Badge>
+                  <Badge variant={featureAcceptanceStatusVariant(feature.status)}>
+                    {featureAcceptanceStatusText(feature.status)}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">{feature.module}</span>
+                </div>
+                <div className="mt-2 font-medium">{feature.id} · {feature.label}</div>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">{feature.evidence}</p>
+                <Progress className="mt-3" value={feature.progress}>
+                  <ProgressLabel>{feature.progress}%</ProgressLabel>
+                  <span className="ml-auto text-xs text-muted-foreground">{feature.nextStep}</span>
+                </Progress>
+                <div className="mt-3 flex flex-wrap gap-1">
+                  {feature.checks.map((check) => (
+                    <Badge key={check.id} variant={check.passed ? "secondary" : check.critical ? "destructive" : "outline"}>
+                      {check.passed ? "✓" : "!"} {check.label}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+              <Button className="mt-3 w-fit" size="sm" variant="outline" onClick={() => onNavigate(feature.section)}>
+                <ClipboardCheckIcon data-icon="inline-start" />
+                {feature.cta}
               </Button>
             </div>
           ))}

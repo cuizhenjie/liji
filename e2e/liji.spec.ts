@@ -13,6 +13,8 @@ test("captures and confirms a birthday event", async ({ page }) => {
   await expect(page.getByText("AI 连续性")).toBeVisible();
   await expect(page.getByText("场景流转")).toBeVisible();
   await expect(page.getByText("场景验收作战室")).toBeVisible();
+  await expect(page.getByText("功能验收矩阵")).toBeVisible();
+  await expect(page.getByText("F202 · 冗余预警机制")).toBeVisible();
   await expect(page.getByText("客户宴请").first()).toBeVisible();
   await expect(page.getByText("资产补齐任务包")).toBeVisible();
   await expect(page.getByText("关联日程：房贷扣款").first()).toBeVisible();
