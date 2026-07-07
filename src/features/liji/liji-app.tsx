@@ -21,6 +21,7 @@ import {
   Loader2Icon,
   LockKeyholeIcon,
   MapPinnedIcon,
+  MoonIcon,
   NotebookPenIcon,
   PlaneIcon,
   PlusIcon,
@@ -31,6 +32,7 @@ import {
   ShieldCheckIcon,
   SmartphoneIcon,
   SparklesIcon,
+  SunIcon,
   Trash2Icon,
   UserRoundIcon,
   WalletCardsIcon,
@@ -237,6 +239,14 @@ import {
   ComplianceDashboard,
   RelationshipHeatmap,
 } from "./analytics-components";
+import { CalendarViews } from "./components/calendar-views";
+import { CaptureCenter } from "./components/capture-center";
+import { CPSProductList } from "./components/cps-product-card";
+import { DataCharts, ExpensePieChart, TrendLineChart } from "./components/data-charts";
+import { GlobalSearch } from "./components/global-search";
+import { OnboardingTour } from "./components/onboarding-tour";
+import { useHoverScale, usePageTransition, useStaggerAnimation } from "./hooks/use-gsap-animation";
+import { ThemeProvider, useTheme } from "@/context/theme-provider";
 
 type SectionId =
   | "dashboard"
@@ -1652,6 +1662,33 @@ export function LijiApp({ initialData }: LijiAppProps) {
     toast.success("关系行动已推进");
   }
 
+  const handleCaptureTextSubmit = useCallback((text: string) => {
+    setCaptureText(text);
+    setCaptureSource("text");
+    handleParseCapture();
+  }, [handleParseCapture]);
+
+  const handleVoiceResult = useCallback((result: { transcript: string; parsed?: { entities?: Array<{ type: string; value: string }> } }) => {
+    setCaptureText(result.transcript);
+    setCaptureSource("voice");
+    if (result.parsed?.entities && result.parsed.entities.length > 0) {
+      const entity = result.parsed.entities[0];
+      const entityTypeLabel = entity.type === "person" ? "人物" : entity.type === "date" ? "日期" : "金额";
+      toast.success(`语音解析成功：${entityTypeLabel} - ${entity.value}`);
+    }
+    handleParseCapture();
+  }, [handleParseCapture]);
+
+  const handleOcrResult = useCallback((result: { text: string; parsed?: { type?: string; data?: { name?: string; amount?: number; total?: number } } }) => {
+    if (result.parsed?.type === "contact_card" && result.parsed.data?.name) {
+      toast.success(`名片识别：${result.parsed.data.name}`);
+    } else if (result.parsed?.type === "sms" && result.parsed.data?.amount) {
+      toast.success(`短信识别：金额 ${result.parsed.data.amount}`);
+    } else if (result.parsed?.type === "receipt" && result.parsed.data?.total) {
+      toast.success(`收据识别：总额 ${result.parsed.data.total}`);
+    }
+  }, []);
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="flex min-h-screen">
@@ -1697,6 +1734,12 @@ export function LijiApp({ initialData }: LijiAppProps) {
                 </div>
                 <IdentitySwitcher value={activeIdentity} onChange={setActiveIdentity} />
                 <div className="flex items-center gap-2">
+                  <GlobalSearch
+                    onNavigate={(section) => setActiveSection(section as SectionId)}
+                    contacts={data.contacts}
+                    events={data.events}
+                  />
+                  <ThemeToggle />
                   <Badge variant="outline" className="hidden md:inline-flex">
                     {workspace.storageState === "synced"
                       ? "已同步云端数据"
@@ -1714,42 +1757,12 @@ export function LijiApp({ initialData }: LijiAppProps) {
               </div>
 
               <div className="w-full max-w-3xl">
-                <InputGroup className="h-10">
-                  <InputGroupAddon>
-                    <SearchIcon />
-                  </InputGroupAddon>
-                  <InputGroupInput
-                    aria-label="采集收件箱输入"
-                    value={captureText}
-                    onChange={(event) => setCaptureText(event.target.value)}
-                    placeholder="输入：下周五是女儿5岁生日，预算2000元"
-                  />
-                  <InputGroupAddon>
-                    <Select value={captureSource} onValueChange={(value) => setCaptureSource(value as CaptureSource)}>
-                      <SelectTrigger size="sm" aria-label="采集来源">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          <SelectItem value="text">文字</SelectItem>
-                          <SelectItem value="voice">语音</SelectItem>
-                          <SelectItem value="screenshot">截图</SelectItem>
-                          <SelectItem value="chat">聊天</SelectItem>
-                          <SelectItem value="bill">账单</SelectItem>
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </InputGroupAddon>
-                  <InputGroupAddon align="inline-end">
-                    <InputGroupButton aria-label="抽取文本" onClick={handleExtractCapture} disabled={isPending}>
-                      <SparklesIcon />
-                    </InputGroupButton>
-                    <InputGroupButton onClick={handleParseCapture} disabled={isPending}>
-                      <SendIcon data-icon="inline-start" />
-                      采集
-                    </InputGroupButton>
-                  </InputGroupAddon>
-                </InputGroup>
+                <CaptureCenter
+                  onTextSubmit={handleCaptureTextSubmit}
+                  onVoiceResult={handleVoiceResult}
+                  onOcrResult={handleOcrResult}
+                  isProcessing={isPending}
+                />
                 <div className="mt-2 grid grid-cols-2 gap-2 md:flex md:flex-wrap">
                   {captureQuickStarts.map((template) => (
                     <Button
@@ -1771,7 +1784,8 @@ export function LijiApp({ initialData }: LijiAppProps) {
           </header>
 
           <div className="grid flex-1 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_328px]">
-            <section className="min-w-0 px-4 pb-24 pt-4 md:px-6 md:pt-6 lg:pb-6">
+            <OnboardingTour />
+            <section className="min-w-0 px-4 py-4 md:px-6 md:py-6">
               {activeSection === "dashboard" && (
                 <DashboardSection
                   data={data}
@@ -1958,6 +1972,19 @@ function BrandBlock({ compact = false }: { compact?: boolean }) {
         </div>
       )}
     </div>
+  );
+}
+
+function ThemeToggle() {
+  const { resolvedTheme, setTheme } = useTheme();
+  return (
+    <button
+      onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+      className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+      title={resolvedTheme === "dark" ? "切换到亮色模式" : "切换到暗色模式"}
+    >
+      {resolvedTheme === "dark" ? <SunIcon className="w-4 h-4" /> : <MoonIcon className="w-4 h-4" />}
+    </button>
   );
 }
 
@@ -2793,6 +2820,42 @@ function DashboardSection(props: {
           </CardContent>
         </Card>
 
+        <CPSProductList
+          title="推荐商品"
+          products={[
+            {
+              id: "1",
+              title: "西湖龙井明前特级 250g",
+              price: 368,
+              commission: 11.04,
+              platform: "jd" as const,
+              image: "https://via.placeholder.com/80",
+              url: "https://item.jd.com/12345.html",
+              tags: ["商务送礼", "绿茶"],
+            },
+            {
+              id: "2",
+              title: "燕之屋即食燕窝 70g*6",
+              price: 298,
+              commission: 8.94,
+              platform: "jd" as const,
+              image: "https://via.placeholder.com/80",
+              url: "https://item.jd.com/23456.html",
+              tags: ["长辈关怀", "健康"],
+            },
+            {
+              id: "3",
+              title: "哈根达斯冰淇淋蛋糕 1kg",
+              price: 258,
+              commission: 7.74,
+              platform: "meituan" as const,
+              image: "https://via.placeholder.com/80",
+              url: "https://www.meituan.com/deal/34567.html",
+              tags: ["生日", "同城配送"],
+            },
+          ]}
+        />
+
         <Card>
           <CardHeader>
             <CardTitle>VIP 画像</CardTitle>
@@ -2862,6 +2925,23 @@ function DashboardSection(props: {
           ]}
         />
       </div>
+
+      <DataCharts
+        expenseData={[
+          { name: "礼品", value: 1800 },
+          { name: "餐饮", value: 1200 },
+          { name: "出行", value: 200 },
+          { name: "其他", value: 0 },
+        ]}
+        trendData={[
+          { month: "1月", amount: 600, count: 3 },
+          { month: "2月", amount: 850, count: 4 },
+          { month: "3月", amount: 350, count: 2 },
+          { month: "4月", amount: 700, count: 3 },
+          { month: "5月", amount: 500, count: 2 },
+          { month: "6月", amount: 200, count: 1 },
+        ]}
+      />
 
       <RelationshipHeatmap
         title="人情热力图"
@@ -4075,36 +4155,21 @@ function CalendarSection(props: {
             </Button>
           </CardAction>
         </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>日期</TableHead>
-                <TableHead>事项</TableHead>
-                <TableHead>对象</TableHead>
-                <TableHead>等级</TableHead>
-                <TableHead>预算</TableHead>
-                <TableHead>状态</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {props.events.map((event) => {
-                const contact = props.contacts.find((item) => item.id === event.contactId);
-                return (
-                  <TableRow key={event.id}>
-                    <TableCell>{event.date}</TableCell>
-                    <TableCell className="font-medium">{event.title}</TableCell>
-                    <TableCell>{contact?.name ?? "-"}</TableCell>
-                    <TableCell>
-                      <Badge variant={badgeVariantForLevel(event.reminderLevel)}>{levelLabel(event.reminderLevel)}</Badge>
-                    </TableCell>
-                    <TableCell>{event.budgetCny ? formatCny(event.budgetCny) : "-"}</TableCell>
-                    <TableCell>{event.status === "confirmed" ? "已确认" : "待处理"}</TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+        <CardContent className="space-y-4">
+          <CalendarViews
+            events={props.events.map((event) => {
+              const contact = props.contacts.find((item) => item.id === event.contactId);
+              return {
+                id: event.id,
+                title: event.title,
+                date: event.date,
+                type: event.title.includes("生日") ? "birthday" as const : event.title.includes("节日") ? "festival" as const : event.reminderLevel === "level_3" ? "meeting" as const : "custom" as const,
+                contactName: contact?.name ?? undefined,
+                budget: event.budgetCny ?? undefined,
+                status: event.status === "confirmed" ? "confirmed" as const : "pending" as const,
+              };
+            })}
+          />
         </CardContent>
       </Card>
     </div>

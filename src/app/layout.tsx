@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ThemeProvider } from "@/context/theme-provider";
 
 import "./globals.css";
 
@@ -41,9 +42,10 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <TooltipProvider>
-          {children}
-          <Toaster
+        <ThemeProvider>
+          <TooltipProvider>
+            {children}
+            <Toaster
             richColors
             closeButton
             position="bottom-center"
@@ -52,8 +54,9 @@ export default function RootLayout({
               left: "0.75rem",
               right: "0.75rem",
             }}
-          />
-        </TooltipProvider>
+            />
+          </TooltipProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
