@@ -130,6 +130,11 @@ import {
   updateBudgetTotal,
 } from "@/lib/liji/finance";
 import { buildPlanFulfillmentLinks } from "@/lib/liji/fulfillment";
+import {
+  buildFulfillmentAgenda,
+  type FulfillmentAgendaItem,
+  type FulfillmentAgendaStatus,
+} from "@/lib/liji/fulfillment-agenda";
 import { buildFulfillmentConciergePack } from "@/lib/liji/fulfillment-concierge";
 import type { FulfillmentReconciliationDiscrepancy } from "@/lib/liji/fulfillment-reconciliation";
 import { createUuid } from "@/lib/liji/ids";
@@ -613,6 +618,22 @@ function calendarAgendaScenarioText(scenario: CalendarAgendaScenario) {
   };
 
   return map[scenario];
+}
+
+function fulfillmentAgendaStatusText(status: FulfillmentAgendaStatus) {
+  if (status === "blocked") return "需复核";
+  if (status === "action") return "待确认";
+  return "已沉淀";
+}
+
+function fulfillmentAgendaStatusVariant(status: FulfillmentAgendaStatus) {
+  if (status === "blocked") return "destructive" as const;
+  if (status === "action") return "outline" as const;
+  return "secondary" as const;
+}
+
+function fulfillmentAgendaScenarioText(scenario: FulfillmentPlan["scenario"]) {
+  return scenario === "travel" ? "商务差旅" : "生日/节日";
 }
 
 function reservePressureText(level: NextMonthReservePlan["pressureLevel"]) {
@@ -1717,7 +1738,7 @@ export function LijiApp({ initialData }: LijiAppProps) {
           </header>
 
           <div className="grid flex-1 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_328px]">
-            <section className="min-w-0 px-4 py-4 md:px-6 md:py-6">
+            <section className="min-w-0 px-4 pb-24 pt-4 md:px-6 md:pt-6 lg:pb-6">
               {activeSection === "dashboard" && (
                 <DashboardSection
                   data={data}
@@ -1852,7 +1873,7 @@ export function LijiApp({ initialData }: LijiAppProps) {
               )}
             </section>
 
-            <aside className="border-t bg-muted/30 px-4 py-4 xl:border-l xl:border-t-0 xl:px-5 xl:py-6">
+            <aside className="border-t bg-muted/30 px-4 pb-24 pt-4 xl:border-l xl:border-t-0 xl:px-5 xl:py-6">
               <RightRail
                 urgentEvents={urgentEvents}
                 logs={data.notificationLogs}
@@ -4006,9 +4027,26 @@ function FulfillmentSection(props: {
   onConfirmPlan: (planId: string) => void;
   onBookmarkPlan: (planId: string) => void;
 }) {
+  const fulfillmentAgenda = buildFulfillmentAgenda({
+    contacts: props.data.contacts,
+    plans: props.data.plans,
+  });
+
+  function runFulfillmentAgendaAction(item: FulfillmentAgendaItem) {
+    if (item.action.kind === "confirm_plan") {
+      props.onConfirmPlan(item.action.planId);
+      return;
+    }
+
+    props.onBookmarkPlan(item.action.planId);
+  }
+
   return (
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-      <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4">
+      <FulfillmentAgendaCard items={fulfillmentAgenda} onAction={runFulfillmentAgendaAction} />
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <div className="flex flex-col gap-4">
         <Card>
           <CardHeader>
             <CardTitle>生日/节日履约</CardTitle>
@@ -4119,21 +4157,78 @@ function FulfillmentSection(props: {
             </FieldGroup>
           </CardContent>
         </Card>
-      </div>
+        </div>
 
-      <div className="flex flex-col gap-4">
-        {props.data.plans.map((plan) => (
-          <PlanCard
-            key={plan.id}
-            plan={plan}
-            contact={props.data.contacts.find((contact) => contact.id === plan.contactId)}
-            linksEnabled={props.data.privacy.thirdPartyLinksEnabled}
-            onConfirm={props.onConfirmPlan}
-            onBookmark={props.onBookmarkPlan}
-          />
-        ))}
+        <div className="flex flex-col gap-4">
+          {props.data.plans.map((plan) => (
+            <PlanCard
+              key={plan.id}
+              plan={plan}
+              contact={props.data.contacts.find((contact) => contact.id === plan.contactId)}
+              linksEnabled={props.data.privacy.thirdPartyLinksEnabled}
+              onConfirm={props.onConfirmPlan}
+              onBookmark={props.onBookmarkPlan}
+            />
+          ))}
+        </div>
       </div>
     </div>
+  );
+}
+
+function FulfillmentAgendaCard({
+  items,
+  onAction,
+}: {
+  items: FulfillmentAgendaItem[];
+  onAction: (item: FulfillmentAgendaItem) => void;
+}) {
+  const openCount = items.filter((item) => item.status !== "ready").length;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>履约执行队列</CardTitle>
+        <CardDescription>把风险复核、方案确认和外部跳转整理成下一步履约动作。</CardDescription>
+        <CardAction>
+          <Badge variant={openCount > 0 ? "outline" : "secondary"}>
+            {openCount} 个待推进
+          </Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+          {items.map((item) => (
+            <div key={item.id} className="flex min-h-40 flex-col justify-between rounded-lg border p-3">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={fulfillmentAgendaStatusVariant(item.status)}>
+                    {fulfillmentAgendaStatusText(item.status)}
+                  </Badge>
+                  <Badge variant="outline">{fulfillmentAgendaScenarioText(item.scenario)}</Badge>
+                </div>
+                <div className="mt-2 font-medium">{item.title}</div>
+                <p className="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground">{item.nextStep}</p>
+                <div className="mt-2 flex flex-wrap gap-1 text-xs text-muted-foreground">
+                  <span>{item.assetState}</span>
+                  <span>{item.evidence}</span>
+                </div>
+              </div>
+              <Button
+                className="mt-3 w-fit"
+                size="sm"
+                variant="outline"
+                aria-label={`执行履约动作 ${item.title}`}
+                onClick={() => onAction(item)}
+              >
+                {item.status === "ready" ? <ArchiveIcon data-icon="inline-start" /> : <CheckIcon data-icon="inline-start" />}
+                {item.cta}
+              </Button>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

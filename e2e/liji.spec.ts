@@ -216,6 +216,7 @@ test("executes calendar agenda actions from the calendar page", async ({ page })
 
 test("opens fulfillment and generates a travel plan", async ({ page }) => {
   await page.getByRole("button", { name: "履约", exact: true }).click();
+  await expect(page.getByText("履约执行队列")).toBeVisible();
   await page.getByRole("button", { name: /生成旅行方案/ }).click();
 
   await expect(page.getByText("礼仪交付包").first()).toBeVisible();
@@ -225,6 +226,18 @@ test("opens fulfillment and generates a travel plan", async ({ page }) => {
   await expect(page.getByText("行前秘书包").first()).toBeVisible();
   await expect(page.getByText(/酒店到客户地址控制在 3 公里内/).first()).toBeVisible();
   await expect(page.getByText("餐饮与打车弹性池").first()).toBeVisible();
+});
+
+test("executes fulfillment agenda actions", async ({ page }) => {
+  await page.getByRole("button", { name: "履约", exact: true }).click();
+
+  await expect(page.getByText("履约执行队列")).toBeVisible();
+  await expect(page.getByText("待确认履约资产").first()).toBeVisible();
+
+  await page.getByRole("button", { name: /执行履约动作 李小满5岁生日履约方案/ }).click();
+
+  await expect(page.getByText("方案已确认", { exact: true })).toBeVisible();
+  await expect(page.getByText("履约资产已沉淀").first()).toBeVisible();
 });
 
 test("confirms a fulfillment plan and preserves it after reload", async ({ page }) => {
