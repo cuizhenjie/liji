@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { NextRequest } from "next/server";
 
 import { DELETE as deleteContact, POST as saveContact } from "../../src/app/api/contacts/route";
 import { GET as authCallback } from "../../src/app/auth/callback/route";
@@ -367,7 +368,7 @@ describe("productization API routes", () => {
     );
     const ledger = await ledgerResponse.json();
     const checkoutResponse = await createCheckout(
-      jsonRequest("/api/billing/checkout", { planId: "pro" })
+      jsonRequest("/api/billing/checkout", { planId: "pro" }) as unknown as NextRequest
     );
     const checkout = await checkoutResponse.json();
     const invoiceResponse = await createInvoice(
