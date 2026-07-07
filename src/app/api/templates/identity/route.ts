@@ -19,6 +19,7 @@ export async function GET() {
     return NextResponse.json({
       ok: true,
       data: allTemplates,
+      templates: allTemplates,
       meta: {
         total: allTemplates.length,
         preset: presetIdentityTemplates.length,

@@ -78,6 +78,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       data: templates,
+      festivals: templates,
       meta: {
         total: templates.length,
         upcoming: upcoming,

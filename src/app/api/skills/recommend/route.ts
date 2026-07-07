@@ -111,28 +111,41 @@ export async function POST(request: NextRequest) {
       occasion,
       festivalScenario,
     });
+    const compliance = complianceResult.success && complianceResult.data && typeof complianceResult.data === 'object'
+      ? complianceResult.data
+      : {
+          passed: true,
+          warnings: [],
+          suggestions: ['合规检查暂未返回结果，请人工复核。'],
+        };
+    const responseData = {
+      identityTemplate: {
+        id: identityTemplate?.id,
+        name: identityTemplate?.name,
+        compliance: identityTemplate?.compliance,
+      },
+      festivalTemplate: festivalTemplate ? {
+        id: festivalTemplate.id,
+        name: festivalTemplate.name,
+      } : null,
+      compliance,
+      recommendations,
+      greetings,
+      budget: {
+        requested: budget,
+        effective: effectiveBudget,
+        limit: identityTemplate?.compliance.giftLimitCny,
+      },
+    };
 
     return NextResponse.json({
       ok: true,
-      data: {
-        identityTemplate: {
-          id: identityTemplate?.id,
-          name: identityTemplate?.name,
-          compliance: identityTemplate?.compliance,
-        },
-        festivalTemplate: festivalTemplate ? {
-          id: festivalTemplate.id,
-          name: festivalTemplate.name,
-        } : null,
-        compliance: complianceResult.data,
-        recommendations,
-        greetings,
-        budget: {
-          requested: budget,
-          effective: effectiveBudget,
-          limit: identityTemplate?.compliance.giftLimitCny,
-        },
-      },
+      data: responseData,
+      compliance,
+      recommendations,
+      greetings,
+      greeting: greetings[0] ?? '',
+      budget: responseData.budget,
     });
   } catch (error) {
     return NextResponse.json(

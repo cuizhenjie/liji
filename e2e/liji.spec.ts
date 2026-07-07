@@ -125,9 +125,13 @@ test("executes scenario playbook actions", async ({ page }) => {
 
 test("executes data asset health actions", async ({ page }) => {
   await expect(page.getByText("数据资产体检")).toBeVisible();
-  await expect(page.getByRole("button", { name: /补齐资产 履约资产/ })).toBeVisible();
+  const fulfillmentAssetButton = page.getByRole("button", { name: /补齐资产 履约资产/ });
 
-  await page.getByRole("button", { name: /补齐资产 履约资产/ }).click();
+  await expect(fulfillmentAssetButton).toBeVisible();
+  await fulfillmentAssetButton.evaluate((node) =>
+    node.scrollIntoView({ block: "center", inline: "nearest" })
+  );
+  await fulfillmentAssetButton.click();
   await expect(page.getByText("方案已确认", { exact: true })).toBeVisible();
 });
 
@@ -246,7 +250,7 @@ test("confirms a fulfillment plan and preserves it after reload", async ({ page 
 
   await expect(page.getByText("方案已确认", { exact: true })).toBeVisible();
   await page.reload();
-  await page.getByRole("button", { name: "履约", exact: true }).click();
+  await page.getByRole("button", { name: "履约", exact: true }).last().click();
   await expect(page.getByText("已确认").first()).toBeVisible();
 });
 

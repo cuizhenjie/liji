@@ -63,9 +63,26 @@ export async function POST(request: Request) {
     allowCloudModel,
     now: new Date(),
   });
+  const parsed = result.capture.parsed;
+  const events = parsed.intent === "event" || parsed.intent === "travel"
+    ? [
+        {
+          id: result.capture.id,
+          title: parsed.title,
+          date: parsed.date,
+          endDate: parsed.endDate,
+          location: parsed.location,
+          reminderLevel: parsed.reminderLevel,
+          budgetCny: parsed.budgetCny,
+          notes: parsed.notes,
+        },
+      ]
+    : [];
 
   return Response.json({
+    ok: true,
     capture: result.capture,
+    events,
     provider: result.provider,
     piiTokenCount: result.piiTokens.length,
     auditPersistence: userId

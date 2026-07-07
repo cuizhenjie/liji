@@ -228,8 +228,10 @@ async function* streamClaude(
  */
 async function* streamMock(
   messages: LLMMessage[],
-  _options: LLMStreamOptions
+  options: LLMStreamOptions
 ): AsyncGenerator<LLMStreamChunk> {
+  void options;
+
   // Simulate streaming by yielding chunks of a mock response
   const userMessage = messages.find((m) => m.role === "user")?.content || "";
   
