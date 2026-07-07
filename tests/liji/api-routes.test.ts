@@ -51,7 +51,7 @@ import { POST as syncWorkspace } from "../../src/app/api/workspace/sync/route";
 import { POST as getTravelQuotes } from "../../src/app/api/travel/quotes/route";
 import { demoWorkspace } from "../../src/lib/liji/sample-data";
 
-function jsonRequest(path: string, body: unknown) {
+function jsonRequest(path: string, body: unknown): Request {
   return new Request(`http://localhost${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
