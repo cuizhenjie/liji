@@ -11,13 +11,15 @@ test("captures and confirms a birthday event", async ({ page }) => {
   await expect(page.getByLabel("采集收件箱输入")).toBeVisible();
   await expect(page.getByText("今日秘书简报")).toBeVisible();
   await expect(page.getByText("秘书分", { exact: true })).toBeVisible();
+  await expect(page.getByText("秘书交接清单")).toBeVisible();
+  await expect(page.getByText("沉淀：日程与提醒资产").first()).toBeVisible();
   await expect(page.getByText("今日秘书工作台")).toBeVisible();
   await expect(page.getByText("验收驾驶舱")).toBeVisible();
   await expect(page.getByText("总体验收分")).toBeVisible();
   await expect(page.getByText("数据资产体检")).toBeVisible();
   await expect(page.getByText("AI 连续性")).toBeVisible();
   await expect(page.getByText("场景流转")).toBeVisible();
-  await expect(page.getByText("场景剧本")).toBeVisible();
+  await expect(page.locator("[data-slot='card-title']").filter({ hasText: /^场景剧本$/ })).toBeVisible();
   await expect(page.getByText("场景验收作战室")).toBeVisible();
   await expect(page.getByText("功能验收矩阵")).toBeVisible();
   await expect(page.getByText("F202 · 冗余预警机制", { exact: true })).toBeVisible();
@@ -69,6 +71,19 @@ test("executes the daily secretary brief primary action", async ({ page }) => {
   await expect(page.getByText("主动作：").first()).toBeVisible();
 });
 
+test("executes the secretary handoff delegated action", async ({ page }) => {
+  await expect(page.getByText("秘书交接清单")).toBeVisible();
+  await expect(page.getByText("先交接：确认红线事项：周明客户宴请")).toBeVisible();
+
+  const handoffButton = page.getByRole("button", { name: /执行秘书交接 确认红线事项：周明客户宴请/ });
+  await handoffButton.scrollIntoViewIfNeeded();
+  await expect(handoffButton).toBeEnabled();
+  await handoffButton.click();
+
+  await expect(page.getByText("已确认提醒，停止升级")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("客户宴请链路已通过红线检查。")).toBeVisible({ timeout: 10_000 });
+});
+
 test("executes the acceptance cockpit next action", async ({ page }) => {
   await expect(page.getByText("验收驾驶舱")).toBeVisible();
   await expect(page.getByText("功能验收 / F202 · 冗余预警机制").first()).toBeVisible();
@@ -95,7 +110,7 @@ test("runs dashboard scenario and asset remediation actions", async ({ page }) =
 });
 
 test("executes scenario playbook actions", async ({ page }) => {
-  await expect(page.getByText("场景剧本")).toBeVisible();
+  await expect(page.locator("[data-slot='card-title']").filter({ hasText: /^场景剧本$/ })).toBeVisible();
   await expect(page.getByText("客户宴请").first()).toBeVisible();
 
   await page.getByRole("button", { name: /执行场景剧本 客户宴请/ }).click();

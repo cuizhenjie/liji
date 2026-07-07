@@ -177,6 +177,12 @@ import {
   type SecretaryBriefAction,
 } from "@/lib/liji/secretary-brief";
 import {
+  buildSecretaryHandoffPlan,
+  type SecretaryHandoffItem,
+  type SecretaryHandoffStage,
+  type SecretaryHandoffUrgency,
+} from "@/lib/liji/secretary-handoff";
+import {
   buildSecretaryTimeline,
   type SecretaryTimelineItem,
 } from "@/lib/liji/secretary-timeline";
@@ -524,6 +530,36 @@ function secretaryBriefStatusVariant(status: SecretaryBrief["status"]) {
   if (status === "urgent") return "destructive" as const;
   if (status === "attention") return "outline" as const;
   return "secondary" as const;
+}
+
+function secretaryHandoffUrgencyText(urgency: SecretaryHandoffUrgency) {
+  if (urgency === "critical") return "需立即交接";
+  if (urgency === "high") return "今日交接";
+  return "例行交接";
+}
+
+function secretaryHandoffUrgencyVariant(urgency: SecretaryHandoffUrgency) {
+  if (urgency === "critical") return "destructive" as const;
+  if (urgency === "high") return "outline" as const;
+  return "secondary" as const;
+}
+
+function secretaryHandoffOwnerText(owner: SecretaryHandoffStage["owner"]) {
+  if (owner === "ai") return "AI";
+  if (owner === "user") return "用户";
+  return "系统";
+}
+
+function secretaryHandoffStageStatusText(status: SecretaryHandoffStage["status"]) {
+  if (status === "done") return "完成";
+  if (status === "current") return "当前";
+  return "下一步";
+}
+
+function secretaryHandoffStageStatusVariant(status: SecretaryHandoffStage["status"]) {
+  if (status === "done") return "secondary" as const;
+  if (status === "current") return "outline" as const;
+  return "outline" as const;
 }
 
 function reservePressureText(level: NextMonthReservePlan["pressureLevel"]) {
@@ -1889,6 +1925,11 @@ function DashboardSection(props: {
     acceptanceReport,
     timeline,
   });
+  const secretaryHandoff = buildSecretaryHandoffPlan({
+    brief: secretaryBrief,
+    scenarioPlaybooks,
+    remediationTasks,
+  });
   const highConfidenceCaptures = pendingCaptures.filter((capture) => capture.parsed.confidence >= 0.75);
   const lowConfidenceCaptures = pendingCaptures.filter((capture) => capture.parsed.confidence < 0.65);
 
@@ -2306,9 +2347,39 @@ function DashboardSection(props: {
     props.onNavigate(action.section);
   }
 
+  function runSecretaryHandoffAction(item: SecretaryHandoffItem) {
+    if (item.action.kind === "brief") {
+      const action = secretaryBrief.primaryAction;
+      if (action && action.id === item.action.id) {
+        runSecretaryBriefAction(action);
+        return;
+      }
+    }
+
+    if (item.action.kind === "scenario") {
+      const playbook = scenarioPlaybooks.find((entry) => entry.id === item.action.id);
+      if (playbook) {
+        runScenarioPlaybookAction(playbook);
+        return;
+      }
+    }
+
+    if (item.action.kind === "remediation") {
+      const task = remediationTasks.find((entry) => entry.id === item.action.id);
+      if (task) {
+        runRemediationTaskAction(task);
+        return;
+      }
+    }
+
+    props.onNavigate(item.section);
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <SecretaryBriefCard brief={secretaryBrief} onAction={runSecretaryBriefAction} />
+
+      <SecretaryHandoffCard plan={secretaryHandoff} onAction={runSecretaryHandoffAction} />
 
       <AcceptanceReportCard report={acceptanceReport} onAction={runAcceptanceReportAction} />
 
@@ -2682,6 +2753,78 @@ function SecretaryBriefCard({
           {brief.primaryAction?.cta ?? "已完成"}
         </Button>
       </CardFooter>
+    </Card>
+  );
+}
+
+function SecretaryHandoffCard({
+  plan,
+  onAction,
+}: {
+  plan: ReturnType<typeof buildSecretaryHandoffPlan>;
+  onAction: (item: SecretaryHandoffItem) => void;
+}) {
+  const hasCritical = plan.items.some((item) => item.urgency === "critical");
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>秘书交接清单</CardTitle>
+        <CardDescription>{plan.headline}</CardDescription>
+        <CardAction>
+          <Badge variant={hasCritical ? "destructive" : plan.openCount > 0 ? "outline" : "secondary"}>
+            {plan.openCount} 件待交接
+          </Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        {plan.items.length === 0 ? (
+          <EmptyLine title="交接完成" detail="今日暂无需要用户确认的秘书任务。" />
+        ) : (
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
+            {plan.items.map((item) => (
+              <div key={item.id} className="flex min-h-72 flex-col justify-between rounded-lg border p-3">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={secretaryHandoffUrgencyVariant(item.urgency)}>
+                      {secretaryHandoffUrgencyText(item.urgency)}
+                    </Badge>
+                    <Badge variant="outline">{item.scenario}</Badge>
+                  </div>
+                  <div className="mt-2 font-medium">{item.title}</div>
+                  <p className="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground">{item.evidence}</p>
+                  <div className="mt-3 grid grid-cols-1 gap-2">
+                    {item.stages.map((stage) => (
+                      <div key={stage.id} className="rounded-md border px-3 py-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant={secretaryHandoffStageStatusVariant(stage.status)}>
+                            {secretaryHandoffStageStatusText(stage.status)}
+                          </Badge>
+                          <Badge variant="outline">{secretaryHandoffOwnerText(stage.owner)}</Badge>
+                          <span className="text-sm font-medium">{stage.label}</span>
+                        </div>
+                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{stage.detail}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs text-muted-foreground">沉淀：{item.assetOutcome}</span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    aria-label={`执行秘书交接 ${item.title}`}
+                    onClick={() => onAction(item)}
+                  >
+                    <SendIcon data-icon="inline-start" />
+                    {item.cta}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
     </Card>
   );
 }
