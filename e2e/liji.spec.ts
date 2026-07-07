@@ -13,6 +13,8 @@ test("captures and confirms a birthday event", async ({ page }) => {
   await expect(page.getByText("秘书分", { exact: true })).toBeVisible();
   await expect(page.getByText("秘书交接清单")).toBeVisible();
   await expect(page.getByText("沉淀：日程与提醒资产").first()).toBeVisible();
+  await expect(page.getByText("资产沉淀回执")).toBeVisible();
+  await expect(page.getByText("账单资产：房贷扣款")).toBeVisible();
   await expect(page.getByText("今日秘书工作台")).toBeVisible();
   await expect(page.getByText("验收驾驶舱")).toBeVisible();
   await expect(page.getByText("总体验收分")).toBeVisible();
@@ -82,6 +84,8 @@ test("executes the secretary handoff delegated action", async ({ page }) => {
 
   await expect(page.getByText("已确认提醒，停止升级")).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText("客户宴请链路已通过红线检查。")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("提醒资产：周明客户宴请")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("button", { name: /查看资产回执 提醒资产：周明客户宴请/ })).toBeVisible();
 });
 
 test("executes the acceptance cockpit next action", async ({ page }) => {

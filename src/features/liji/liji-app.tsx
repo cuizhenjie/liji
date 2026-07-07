@@ -91,6 +91,11 @@ import {
   type AcceptanceReport,
   type AcceptanceReportAction,
 } from "@/lib/liji/acceptance-report";
+import {
+  buildAssetReceipts,
+  type AssetReceipt,
+  type AssetReceiptKind,
+} from "@/lib/liji/asset-receipts";
 import type { CaptureSource } from "@/lib/liji/ai";
 import { deriveComplianceProfile } from "@/lib/liji/compliance";
 import { generateFestivalPlan, generateTravelPlan } from "@/lib/liji/budget";
@@ -559,6 +564,24 @@ function secretaryHandoffStageStatusText(status: SecretaryHandoffStage["status"]
 function secretaryHandoffStageStatusVariant(status: SecretaryHandoffStage["status"]) {
   if (status === "done") return "secondary" as const;
   if (status === "current") return "outline" as const;
+  return "outline" as const;
+}
+
+function assetReceiptKindText(kind: AssetReceiptKind) {
+  const map: Record<AssetReceiptKind, string> = {
+    relationship: "关系",
+    schedule: "日程",
+    fulfillment: "履约",
+    finance: "账单",
+    memory: "记忆",
+  };
+
+  return map[kind];
+}
+
+function assetReceiptKindVariant(kind: AssetReceiptKind) {
+  if (kind === "schedule" || kind === "fulfillment") return "secondary" as const;
+  if (kind === "finance") return "outline" as const;
   return "outline" as const;
 }
 
@@ -1930,6 +1953,7 @@ function DashboardSection(props: {
     scenarioPlaybooks,
     remediationTasks,
   });
+  const assetReceipts = buildAssetReceipts(scopedData, 6);
   const highConfidenceCaptures = pendingCaptures.filter((capture) => capture.parsed.confidence >= 0.75);
   const lowConfidenceCaptures = pendingCaptures.filter((capture) => capture.parsed.confidence < 0.65);
 
@@ -2375,11 +2399,17 @@ function DashboardSection(props: {
     props.onNavigate(item.section);
   }
 
+  function runAssetReceiptAction(receipt: AssetReceipt) {
+    props.onNavigate(receipt.section);
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <SecretaryBriefCard brief={secretaryBrief} onAction={runSecretaryBriefAction} />
 
       <SecretaryHandoffCard plan={secretaryHandoff} onAction={runSecretaryHandoffAction} />
+
+      <AssetReceiptCard receipts={assetReceipts} onAction={runAssetReceiptAction} />
 
       <AcceptanceReportCard report={acceptanceReport} onAction={runAcceptanceReportAction} />
 
@@ -2820,6 +2850,59 @@ function SecretaryHandoffCard({
                     {item.cta}
                   </Button>
                 </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function AssetReceiptCard({
+  receipts,
+  onAction,
+}: {
+  receipts: AssetReceipt[];
+  onAction: (receipt: AssetReceipt) => void;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>资产沉淀回执</CardTitle>
+        <CardDescription>把已办结事项解释为可复用的数据资产。</CardDescription>
+        <CardAction>
+          <Badge variant="secondary">{receipts.length} 条回执</Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        {receipts.length === 0 ? (
+          <EmptyLine title="暂无沉淀回执" detail="确认提醒、方案、账单或记忆后会生成回执。" />
+        ) : (
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+            {receipts.map((receipt) => (
+              <div key={receipt.id} className="flex min-h-36 flex-col justify-between rounded-lg border p-3">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={assetReceiptKindVariant(receipt.kind)}>
+                      {assetReceiptKindText(receipt.kind)}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">{receipt.timestamp.slice(0, 10)}</span>
+                  </div>
+                  <div className="mt-2 font-medium">{receipt.title}</div>
+                  <p className="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground">{receipt.detail}</p>
+                  <p className="mt-2 line-clamp-1 text-xs text-muted-foreground">{receipt.evidence}</p>
+                </div>
+                <Button
+                  className="mt-3 w-fit"
+                  size="sm"
+                  variant="outline"
+                  aria-label={`查看资产回执 ${receipt.title}`}
+                  onClick={() => onAction(receipt)}
+                >
+                  <ReceiptTextIcon data-icon="inline-start" />
+                  {receipt.cta}
+                </Button>
               </div>
             ))}
           </div>
