@@ -202,6 +202,18 @@ test("opens AI continuity recovery actions", async ({ page }) => {
   await expect(page.getByText("公网模型调用")).toBeVisible();
 });
 
+test("executes calendar agenda actions from the calendar page", async ({ page }) => {
+  await page.getByRole("button", { name: "日历", exact: true }).click();
+
+  await expect(page.getByText("日程执行队列")).toBeVisible();
+  await expect(page.getByText("待沉淀提醒资产")).toBeVisible();
+
+  await page.getByRole("button", { name: /执行日程动作 周明客户宴请/ }).click();
+
+  await expect(page.getByText("已确认提醒，停止升级")).toBeVisible();
+  await expect(page.getByText("日程资产已沉淀")).toBeVisible();
+});
+
 test("opens fulfillment and generates a travel plan", async ({ page }) => {
   await page.getByRole("button", { name: "履约", exact: true }).click();
   await page.getByRole("button", { name: /生成旅行方案/ }).click();

@@ -97,6 +97,12 @@ import {
   type AssetReceiptKind,
 } from "@/lib/liji/asset-receipts";
 import type { CaptureSource } from "@/lib/liji/ai";
+import {
+  buildCalendarAgenda,
+  type CalendarAgendaItem,
+  type CalendarAgendaScenario,
+  type CalendarAgendaStatus,
+} from "@/lib/liji/calendar-agenda";
 import { deriveComplianceProfile } from "@/lib/liji/compliance";
 import { generateFestivalPlan, generateTravelPlan } from "@/lib/liji/budget";
 import type {
@@ -583,6 +589,30 @@ function assetReceiptKindVariant(kind: AssetReceiptKind) {
   if (kind === "schedule" || kind === "fulfillment") return "secondary" as const;
   if (kind === "finance") return "outline" as const;
   return "outline" as const;
+}
+
+function calendarAgendaStatusText(status: CalendarAgendaStatus) {
+  if (status === "urgent") return "红线";
+  if (status === "action") return "待推进";
+  return "已沉淀";
+}
+
+function calendarAgendaStatusVariant(status: CalendarAgendaStatus) {
+  if (status === "urgent") return "destructive" as const;
+  if (status === "action") return "outline" as const;
+  return "secondary" as const;
+}
+
+function calendarAgendaScenarioText(scenario: CalendarAgendaScenario) {
+  const map: Record<CalendarAgendaScenario, string> = {
+    relationship: "关系关怀",
+    hospitality: "客户宴请",
+    travel: "商务差旅",
+    bill: "账单",
+    general: "日程",
+  };
+
+  return map[scenario];
 }
 
 function reservePressureText(level: NextMonthReservePlan["pressureLevel"]) {
@@ -1742,7 +1772,13 @@ export function LijiApp({ initialData }: LijiAppProps) {
                 <CalendarSection
                   contacts={identityContacts}
                   events={identityEvents}
+                  plans={identityPlans}
                   onRunReminders={runReminderScanNow}
+                  onConfirmEvent={confirmEventRead}
+                  onBirthdayPlan={generateBirthdayPlan}
+                  onTravelPlan={generateBusinessTravelPlan}
+                  onConfirmPlan={confirmPlan}
+                  onNavigate={setActiveSection}
                 />
               )}
               {activeSection === "fulfillment" && (
@@ -3810,52 +3846,136 @@ function ContactsSection(props: {
 function CalendarSection(props: {
   contacts: Contact[];
   events: CalendarEvent[];
+  plans: FulfillmentPlan[];
   onRunReminders: () => void;
+  onConfirmEvent: (eventId: string) => void;
+  onBirthdayPlan: (eventId?: string) => void;
+  onTravelPlan: () => void;
+  onConfirmPlan: (planId: string) => void;
+  onNavigate: (section: SectionId) => void;
 }) {
+  const agenda = buildCalendarAgenda({
+    contacts: props.contacts,
+    events: props.events,
+    plans: props.plans,
+  });
+  const urgentCount = agenda.filter((item) => item.status === "urgent").length;
+
+  function runAgendaAction(item: CalendarAgendaItem) {
+    if (item.action.kind === "confirm_event") {
+      props.onConfirmEvent(item.action.eventId);
+      return;
+    }
+
+    if (item.action.kind === "confirm_plan") {
+      props.onConfirmPlan(item.action.planId);
+      return;
+    }
+
+    if (item.action.kind === "generate_festival_plan") {
+      props.onBirthdayPlan(item.action.eventId);
+      return;
+    }
+
+    if (item.action.kind === "generate_travel_plan") {
+      props.onTravelPlan();
+      return;
+    }
+
+    props.onNavigate(item.action.section);
+  }
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>智能动态日历</CardTitle>
-        <CardDescription>阳历优先，支持农历与 RRULE 重复规则。</CardDescription>
-        <CardAction>
-          <Button size="sm" onClick={props.onRunReminders}>
-            <BellRingIcon data-icon="inline-start" />
-            运行提醒
-          </Button>
-        </CardAction>
-      </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>日期</TableHead>
-              <TableHead>事项</TableHead>
-              <TableHead>对象</TableHead>
-              <TableHead>等级</TableHead>
-              <TableHead>预算</TableHead>
-              <TableHead>状态</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {props.events.map((event) => {
-              const contact = props.contacts.find((item) => item.id === event.contactId);
-              return (
-                <TableRow key={event.id}>
-                  <TableCell>{event.date}</TableCell>
-                  <TableCell className="font-medium">{event.title}</TableCell>
-                  <TableCell>{contact?.name ?? "-"}</TableCell>
-                  <TableCell>
-                    <Badge variant={badgeVariantForLevel(event.reminderLevel)}>{levelLabel(event.reminderLevel)}</Badge>
-                  </TableCell>
-                  <TableCell>{event.budgetCny ? formatCny(event.budgetCny) : "-"}</TableCell>
-                  <TableCell>{event.status === "confirmed" ? "已确认" : "待处理"}</TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
+    <div className="flex flex-col gap-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>日程执行队列</CardTitle>
+          <CardDescription>把提醒、履约和账单复盘串成下一步动作。</CardDescription>
+          <CardAction>
+            <Badge variant={urgentCount > 0 ? "destructive" : "secondary"}>
+              {urgentCount} 个红线
+            </Badge>
+          </CardAction>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+            {agenda.map((item) => (
+              <div key={item.id} className="flex min-h-40 flex-col justify-between rounded-lg border p-3">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={calendarAgendaStatusVariant(item.status)}>
+                      {calendarAgendaStatusText(item.status)}
+                    </Badge>
+                    <Badge variant="outline">{calendarAgendaScenarioText(item.scenario)}</Badge>
+                    <span className="text-xs text-muted-foreground">{item.date}</span>
+                  </div>
+                  <div className="mt-2 font-medium">{item.title}</div>
+                  <p className="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground">{item.nextStep}</p>
+                  <div className="mt-2 flex flex-wrap gap-1 text-xs text-muted-foreground">
+                    <span>{item.assetState}</span>
+                    <span>{item.evidence}</span>
+                  </div>
+                </div>
+                <Button
+                  className="mt-3 w-fit"
+                  size="sm"
+                  variant="outline"
+                  aria-label={`执行日程动作 ${item.title}`}
+                  onClick={() => runAgendaAction(item)}
+                >
+                  {item.status === "done" ? <SearchIcon data-icon="inline-start" /> : <CheckIcon data-icon="inline-start" />}
+                  {item.cta}
+                </Button>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>智能动态日历</CardTitle>
+          <CardDescription>阳历优先，支持农历与 RRULE 重复规则。</CardDescription>
+          <CardAction>
+            <Button size="sm" onClick={props.onRunReminders}>
+              <BellRingIcon data-icon="inline-start" />
+              运行提醒
+            </Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>日期</TableHead>
+                <TableHead>事项</TableHead>
+                <TableHead>对象</TableHead>
+                <TableHead>等级</TableHead>
+                <TableHead>预算</TableHead>
+                <TableHead>状态</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {props.events.map((event) => {
+                const contact = props.contacts.find((item) => item.id === event.contactId);
+                return (
+                  <TableRow key={event.id}>
+                    <TableCell>{event.date}</TableCell>
+                    <TableCell className="font-medium">{event.title}</TableCell>
+                    <TableCell>{contact?.name ?? "-"}</TableCell>
+                    <TableCell>
+                      <Badge variant={badgeVariantForLevel(event.reminderLevel)}>{levelLabel(event.reminderLevel)}</Badge>
+                    </TableCell>
+                    <TableCell>{event.budgetCny ? formatCny(event.budgetCny) : "-"}</TableCell>
+                    <TableCell>{event.status === "confirmed" ? "已确认" : "待处理"}</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
